@@ -1,0 +1,86 @@
+# ============================================================
+# Render deployment configuration (IaC)
+# Docs: https://render.com/docs/render-yaml-spec
+#
+# Deploy:
+#   1. Push to GitHub
+#   2. Go to Render Dashboard → New → Blueprint
+#   3. Connect your GitHub repo, select this render.yaml
+#   4. Fill in env vars marked sync: false in the dashboard
+#
+# Architecture:
+#   - FastAPI backend (Docker) with WebSocket support
+#   - Redis for caching + WebSocket pub/sub
+#   - Frontend deployed separately on Vercel
+# ============================================================
+
+services:
+
+  # ─── FastAPI Backend ───────────────────────────────────────
+  - type: web
+    name: documind-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    region: frankfurt
+    plan: starter                   # $7/mo — upgrade to standard for prod
+    healthCheckPath: /health
+    envVars:
+      # App
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+
+      # Security (auto-generated)
+      - key: SECRET_KEY
+        generateValue: true
+
+      # Supabase (set manually in Render dashboard)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+
+      # AI — Google Gemini (free tier)
+      - key: GOOGLE_API_KEY
+        sync: false
+
+      # Redis (auto-linked from the redis service below)
+      - key: REDIS_URL
+        fromService:
+          name: documind-redis
+          type: redis
+          property: connectionString
+
+      # CORS — allow Vercel frontend
+      - key: ALLOWED_ORIGINS
+        value: '["https://documind.vercel.app","https://www.documind.app"]'
+
+      # Stripe billing (set manually in Render dashboard)
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID_PRO
+        sync: false
+      - key: FRONTEND_URL
+        value: https://documind.vercel.app
+
+      # Monitoring (optional)
+      - key: SENTRY_DSN
+        sync: false
+
+  # ─── Redis (caching + WebSocket pub/sub) ────────────────────
+  - type: redis
+    name: documind-redis
+    region: frankfurt
+    plan: starter                   # Free 25MB — upgrade for production
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []                 # Allow only internal Render services
