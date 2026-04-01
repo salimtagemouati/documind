@@ -1,391 +1,253 @@
 # DocuMind — AI Document Intelligence Platform
 
-> A production-grade, full-stack SaaS application that transforms any document into structured knowledge using RAG, semantic search, and LLM pipelines.
+> **Transform documents into structured intelligence.** A production-ready, full-stack RAG SaaS that analyzes PDFs, DOCXs, and TXTs using Google Gemini 1.5 Flash and FAISS vector indexing.
 
-[![CI](https://github.com/SalimTag/documind/actions/workflows/ci.yml/badge.svg)](https://github.com/SalimTag/documind/actions)
-[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18-61DAFB)](https://react.dev)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
----
-
-## Overview
-
-DocuMind is a full-stack AI SaaS application that allows users to upload documents (PDF, DOCX, TXT) and instantly extract intelligence from them: structured summaries, named entity graphs, sentiment analysis, keyword extraction — and most importantly, a **RAG-powered Q&A engine** that answers questions grounded strictly in the document content.
-
-Built to demonstrate production-level software engineering: async Python backend, JWT authentication, PostgreSQL with Row Level Security, FAISS vector indexing, Redis caching, and a React dashboard — all deployable in one command.
+[![Production Frontend](https://img.shields.io/badge/Production-Live-61DAFB?style=for-the-badge&logo=vercel)](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app)
+[![Production API](https://img.shields.io/badge/API-Live-009688?style=for-the-badge&logo=fastapi)](https://documind-api-fq31.onrender.com/health)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=for-the-badge&logo=supabase)](https://supabase.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 ---
 
-## Architecture
+## 🔗 Live Demo
 
+| Service | URL |
+|---------|-----|
+| 🌐 Frontend (Vercel) | [documind-frontend.vercel.app](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app) |
+| ⚙️ API Docs (Swagger) | [documind-api.onrender.com/api/docs](https://documind-api-fq31.onrender.com/api/docs) |
+
+---
+
+## 🧠 What is DocuMind?
+
+DocuMind is a high-performance AI-powered SaaS application built for **deep document interrogation**. Instead of simple text extraction, it implements a **Production-Grade RAG (Retrieval-Augmented Generation)** pipeline that lets users have grounded, cited conversations with their documents.
+
+Whether you're analyzing contracts, research papers, or internal reports — DocuMind extracts meaning, answers questions, and surfaces intelligence in seconds.
+
+---
+
+## ✨ Key Features
+
+| Feature | Description |
+|---------|-------------|
+| 🔍 **RAG Q&A Engine** | Ask natural language questions and receive accurate, cited answers grounded in your documents |
+| 📝 **Smart Summarization** | Hierarchical map-reduce summarization for large files (15+ chunks) |
+| 🏷️ **Named Entity Recognition** | Auto-extract people, organizations, dates, locations, and monetary values |
+| 📊 **Sentiment Analysis** | Multi-dimensional emotional tone and sentiment distribution across document content |
+| 🔑 **Keyword Extraction** | Surface the most relevant keywords and themes automatically |
+| 🕐 **Query History** | Full history of every question asked, with cached responses for instant retrieval |
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+graph TD
+    User((User)) -->|HTTPS/JWT| FE[React Frontend\nVercel]
+    FE -->|REST API| BE[FastAPI Backend\nRender]
+
+    subgraph "Backend Services"
+        BE -->|Async Processing| DP[Document Processor]
+        BE -->|Semantic Retrieval| RS[RAG Service]
+        BE -->|Billing| ST[Stripe]
+        RS -->|Vector Index| FAISS[FAISS-CPU]
+    end
+
+    subgraph "Data Layer"
+        BE -->|SQLAlchemy ORM| PG[(Supabase PostgreSQL)]
+        DP -->|Object Storage| S3[(Supabase Storage)]
+        BE -->|Response Cache| RD[(Redis - 1h TTL)]
+    end
+
+    subgraph "AI Intelligence"
+        BE -->|LLM + Embeddings| GM[Google Gemini 1.5 Flash\ntext-embedding-004]
+    end
 ```
-┌────────────────────────────────────────────────────┐
-│              React Frontend (Vite)                  │
-│   Auth · Upload · Dashboard · Analysis · Q&A       │
-└──────────────────────┬─────────────────────────────┘
-                       │ HTTPS + JWT Bearer
-┌──────────────────────▼─────────────────────────────┐
-│           FastAPI Backend (Python 3.11)             │
-│  JWT auth · Rate limiting · CORS · Health checks   │
-│                                                     │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────┐ │
-│  │Auth Service │  │Doc Processor │  │AI Service │ │
-│  │JWT · bcrypt │  │Extract·Chunk │  │LLM prompts│ │
-│  └─────────────┘  └──────────────┘  └───────────┘ │
-│                                                     │
-│  ┌──────────────────────────────────────────────┐  │
-│  │            RAG Service (Core)                │  │
-│  │  Embed chunks → FAISS index → Retrieve top-K │  │
-│  │  → Build context → LLM → Grounded answer     │  │
-│  └──────────────────────────────────────────────┘  │
-└────────┬────────────┬─────────────┬────────────────┘
-         │            │             │
-    ┌────▼───┐  ┌─────▼────┐  ┌────▼────┐
-    │Postgres│  │Supabase  │  │  Redis  │
-    │+Supa.  │  │Storage   │  │ Cache   │
-    │RLS     │  │(files)   │  │(Q&A TTL)│
-    └────────┘  └──────────┘  └─────────┘
-                                    │
-                            ┌───────▼──────┐
-                            │  Google AI   │
-                            │ Gemini Flash │
-                            │+ Embeddings  │
-                            └──────────────┘
+
+### Engineering Highlights
+
+- **🔐 Data Security** — PostgreSQL Row Level Security (RLS) enforces strict data isolation between users at the database level
+- **⚡ Performance** — Redis caching with 1h TTL for Q&A responses reduces LLM latency and API costs significantly
+- **🔄 Reliability** — FastAPI `BackgroundTasks` provides non-blocking document upload with real-time status polling
+- **🎯 Accuracy** — Sentence-aware chunking (800 tokens + 100 overlap) preserves semantic context across chunk boundaries
+
+---
+
+## 💻 Tech Stack
+
+### Frontend
+![React](https://img.shields.io/badge/React_18-20232A?logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)
+![Zustand](https://img.shields.io/badge/Zustand-orange)
+![TanStack Query](https://img.shields.io/badge/TanStack_Query-FF4154?logo=reactquery&logoColor=white)
+
+### Backend
+![Python](https://img.shields.io/badge/Python_3.11-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy_2.0-red)
+![Pydantic](https://img.shields.io/badge/Pydantic_v2-E92063?logo=pydantic&logoColor=white)
+
+### Infrastructure & Data
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?logo=supabase&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)
+![Render](https://img.shields.io/badge/Render-46E3B7?logo=render&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white)
+![Stripe](https://img.shields.io/badge/Stripe-008CDD?logo=stripe&logoColor=white)
+
+### AI / ML
+![Google Gemini](https://img.shields.io/badge/Gemini_1.5_Flash-4285F4?logo=google&logoColor=white)
+![FAISS](https://img.shields.io/badge/FAISS_CPU-Vector_Search-blueviolet)
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Python 3.11+ and Node 20+
+- [Google AI Studio API Key](https://aistudio.google.com/) (free tier available)
+- [Supabase Project](https://supabase.com/) (Postgres + Storage)
+- [Stripe Account](https://stripe.com/) (test keys sufficient)
+
+### Local Development (Docker)
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/SalimTag/documind.git
+cd documind
+
+# 2. Set up environment variables
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+# Fill in your API keys in both .env files
+
+# 3. Launch the full stack
+docker compose up --build
 ```
 
-### Component breakdown
+The app will be available at `http://localhost:5173` with the API at `http://localhost:8000`.
 
-| Component | Technology | Responsibility |
-|---|---|---|
-| Frontend | React 18, Vite, Zustand, TanStack Query | Dashboard, auth, file upload, analysis display, Q&A |
-| API layer | FastAPI, Pydantic v2, Uvicorn | REST API, request validation, JWT middleware |
-| Auth | python-jose, passlib/bcrypt | Token issuance, refresh, password hashing |
-| Doc processor | pypdf, python-docx, tiktoken | Text extraction, smart sentence-aware chunking |
-| RAG service | FAISS, Gemini text-embedding-004 | Vector index build, semantic similarity retrieval |
-| AI service | Google Gemini 1.5 Flash | Summarization, entity extraction, sentiment, Q&A |
-| Database | PostgreSQL (Supabase), SQLAlchemy async | Users, documents, chunks, query history, analytics |
-| Storage | Supabase Storage | Binary file storage with per-user path isolation |
-| Cache | Redis | Q&A response caching (TTL 1h), cost control |
-| CI | GitHub Actions | Test + build on every push |
+### Environment Variables
 
----
+#### Backend (`backend/.env`)
+```env
+DATABASE_URL=postgresql+asyncpg://user:password@host/db
+GOOGLE_API_KEY=your_google_ai_studio_key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_service_key
+REDIS_URL=redis://localhost:6379
+STRIPE_SECRET_KEY=sk_test_...
+```
 
-## Key Engineering Decisions
-
-### RAG over naïve text dumping
-Most demos send the full document text to the LLM. This fails for large documents (exceeds context window), wastes tokens (expensive), and produces unfocused answers. DocuMind implements proper RAG:
-
-1. **Chunking** — documents split into ~800-token segments with 100-token overlap at sentence boundaries (not arbitrary character positions)
-2. **Embedding** — each chunk embedded via `text-embedding-004` into 768-dimensional vectors
-3. **FAISS indexing** — inner product index built per document, persisted to disk
-4. **Retrieval** — query embedded, top-6 most similar chunks fetched (cosine similarity ≥ 0.70)
-5. **Generation** — only retrieved context passed to Gemini, with strict "answer from document only" system prompt
-
-### Map-reduce summarization
-Gemini 1.5 Flash's large context window allows processing up to 15 chunks directly. For larger documents (15+ chunks), DocuMind uses a lightweight two-pass approach: groups of 10 chunks summarized independently, then summaries combined.
-
-### Async pipeline + background tasks
-File upload returns `202 Accepted` immediately. The full processing pipeline (extract → chunk → embed → analyze) runs as a FastAPI `BackgroundTask`, with status polling available via `GET /documents/{id}`.
-
-### Redis caching for cost control
-Identical Q&A pairs (same document + normalized question) are cached for 1 hour. Cache hit rate is tracked per-user in analytics. This prevents re-charging users for repeated queries.
+#### Frontend (`frontend/.env`)
+```env
+VITE_API_URL=http://localhost:8000
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
+```
 
 ---
 
-## Features
+## ☁️ Production Deployment
 
-### Document intelligence
-- **Summarization** — 3–6 sentence AI summary using map-reduce for large docs
-- **Named entity extraction** — persons, organizations, locations, dates, technologies, monetary values — structured JSON
-- **Sentiment analysis** — positive/negative/neutral/mixed label, 0–1 score, confidence, tone classification
-- **Keyword extraction** — top 10 keyphrases
+### Backend → Render
 
-### RAG Q&A
-- Semantic retrieval of relevant chunks
-- Grounded answers — LLM instructed to cite sources and refuse out-of-scope questions
-- Source citations with similarity scores and page numbers
-- Query history with token usage and latency tracking
+1. Link your GitHub repository to [Render](https://render.com)
+2. Set the root directory to `/backend`
+3. Add all environment variables from `backend/.env`
+4. Ensure `DATABASE_URL` uses the `postgresql+asyncpg://` driver prefix
+5. Deploy as a **Web Service** using the Dockerfile
 
-### Platform
-- JWT authentication with access + refresh token rotation
-- File upload: PDF, DOCX, TXT, MD — up to 20 MB
-- Supabase Storage with per-user path isolation
-- PostgreSQL Row Level Security — users can never access each other's data
-- Redis Q&A cache (1h TTL, per-document invalidation on delete)
-- Rate limiting: 60 req/min general, 10 AI req/min per IP
-- Per-user analytics: documents uploaded, queries made, tokens used, avg latency, cache hit rate
-- Admin analytics: system-wide stats
-- Sentry integration for production error tracking
+### Frontend → Vercel
+
+1. Link your GitHub repository to [Vercel](https://vercel.com)
+2. Set the root directory to `/frontend`
+3. Add `VITE_API_URL` pointing to your Render deployment URL
+4. Add Supabase and Stripe environment variables
+5. Deploy — Vercel will auto-detect the Vite configuration
 
 ---
 
-## Tech Stack
-
-**Backend**
-- Python 3.11
-- FastAPI 0.111 — async REST API framework
-- SQLAlchemy 2.0 (async) — ORM with connection pooling
-- Supabase — PostgreSQL + Storage + RLS
-- Google Generative AI SDK — Gemini 1.5 Flash + text-embedding-004 (free tier, $0 cost)
-- FAISS-CPU — vector similarity search
-- Redis — async caching via aioredis
-- python-jose — JWT handling
-- passlib/bcrypt — password hashing
-- structlog — structured JSON logging
-- slowapi — rate limiting
-- tenacity — retry logic for API calls
-- pypdf, python-docx — document parsing
-- tiktoken — accurate token counting
-
-**Frontend**
-- React 18
-- TypeScript
-- Vite — fast dev server + optimized builds
-- Zustand — lightweight auth state
-- TanStack Query — server state, caching, auto-refetch
-- Axios — HTTP client with auto-refresh interceptor
-- react-dropzone — drag-and-drop upload
-- react-hot-toast — notifications
-- date-fns — date formatting
-
-**Infrastructure**
-- Docker + Docker Compose — local full-stack dev
-- Render — backend + Redis hosting
-- Vercel — frontend hosting
-- GitHub Actions — CI (tests + build)
-
----
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 documind/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI app, middleware, lifespan
-│   │   ├── api/routes/
-│   │   │   ├── auth.py          # Register, login, refresh, /me
-│   │   │   ├── documents.py     # Upload, list, get, analyze, delete
-│   │   │   ├── query.py         # RAG Q&A + query history
-│   │   │   └── analytics.py     # User stats + admin stats
-│   │   ├── core/
-│   │   │   ├── config.py        # Pydantic settings (env vars)
-│   │   │   ├── security.py      # JWT + password utilities
-│   │   │   └── logging.py       # structlog setup
-│   │   ├── services/
-│   │   │   ├── document_processor.py  # Text extraction + chunking
-│   │   │   ├── rag_service.py         # FAISS build + retrieval
-│   │   │   ├── ai_service.py          # LLM calls (summarize, NER, Q&A)
-│   │   │   └── cache_service.py       # Redis caching
-│   │   ├── models/models.py     # SQLAlchemy ORM models
-│   │   ├── schemas/schemas.py   # Pydantic request/response schemas
-│   │   └── db/database.py       # Async engine + Supabase client
-│   ├── tests/
-│   │   └── test_document_processor.py
-│   ├── requirements.txt
+│   │   ├── api/           # FastAPI route handlers
+│   │   ├── core/          # Config, security, dependencies
+│   │   ├── models/        # SQLAlchemy ORM models
+│   │   ├── schemas/       # Pydantic v2 schemas
+│   │   ├── services/      # RAG engine, document processor
+│   │   └── main.py
 │   ├── Dockerfile
-│   └── .env.example
+│   └── requirements.txt
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx              # Router + providers
-│   │   ├── pages/
-│   │   │   ├── AuthPage.tsx     # Login + register
-│   │   │   └── Dashboard.tsx    # Main workspace
-│   │   ├── components/dashboard/
-│   │   │   ├── DocumentViewer.tsx  # Analysis tabs + Q&A
-│   │   │   ├── DocumentList.tsx    # Sidebar document list
-│   │   │   ├── UploadZone.tsx      # Drag-drop uploader
-│   │   │   └── StatsBar.tsx        # Usage metrics
-│   │   ├── services/api.ts      # Axios instance + all API calls
-│   │   └── store/authStore.ts   # Zustand auth state
-│   ├── vercel.json
-│   └── .env.example
-├── scripts/
-│   └── 001_init_schema.sql      # Full Postgres schema + RLS
-├── infra/
-│   └── render.yaml              # Render one-click deploy config
-├── .github/workflows/ci.yml     # GitHub Actions CI
-└── docker-compose.yml           # Full local stack
+│   │   ├── components/    # Reusable UI components
+│   │   ├── pages/         # Route-level views
+│   │   ├── stores/        # Zustand state management
+│   │   ├── hooks/         # TanStack Query hooks
+│   │   └── lib/           # API client, utilities
+│   └── package.json
+└── docker-compose.yml
 ```
 
 ---
 
-## Quick Start
+## 💰 Pricing
 
-### Prerequisites
-- Python 3.11+
-- Node 20+
-- Docker (optional, for Redis locally)
-- Supabase account (free tier works)
-- Google AI Studio API key (free) — [aistudio.google.com](https://aistudio.google.com/app/apikey)
+| Plan | Price | Documents | Queries |
+|------|-------|-----------|---------|
+| **Free** | $0/month | Up to 3 | 20/day |
+| **Pro** | $12/month | Unlimited | Unlimited |
 
-### 1. Clone
-
-```bash
-git clone https://github.com/SalimTag/documind.git
-cd documind
-```
-
-### 2. Supabase setup
-
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Open the SQL Editor and run `scripts/001_init_schema.sql`
-3. Create a Storage bucket named `documents` (set to private)
-4. Copy your Project URL, anon key, service key, and DB connection string
-
-### 3. Backend setup
-
-```bash
-cd backend
-cp .env.example .env
-# Edit .env — fill in SUPABASE_*, GOOGLE_API_KEY, DATABASE_URL, SECRET_KEY
-
-python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-uvicorn app.main:app --reload
-# API running at http://localhost:8000
-# Docs at http://localhost:8000/api/docs
-```
-
-### 4. Redis (optional but recommended)
-
-```bash
-docker run -d -p 6379:6379 redis:7-alpine
-```
-
-Without Redis, DocuMind falls back to in-memory caching (not shared across workers, not persistent).
-
-### 5. Frontend setup
-
-```bash
-cd frontend
-cp .env.example .env
-# VITE_API_URL can stay empty for local dev (Vite proxy handles it)
-
-npm install
-npm run dev
-# App running at http://localhost:5173
-```
-
-### 6. Full stack with Docker Compose
-
-```bash
-cp backend/.env.example backend/.env
-# Edit backend/.env
-
-docker compose up --build
-```
-
-Access: `http://localhost:5173` (frontend) · `http://localhost:8000/api/docs` (API)
-
-### 7. Run tests
-
-```bash
-cd backend
-pytest tests/ -v
-```
+Pro includes priority processing, advanced analytics, API access, and email support.
 
 ---
 
-## Deployment
+## 🛣️ Roadmap
 
-### Backend → Render
-
-1. Push repo to GitHub
-2. Go to [render.com](https://render.com) → New → Blueprint
-3. Connect your repo — Render reads `infra/render.yaml` automatically
-4. Set environment variables in the Render dashboard:
-   - `GOOGLE_API_KEY`
-   - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
-   - `DATABASE_URL`
-5. Deploy — Redis service is created automatically
-
-### Frontend → Vercel
-
-```bash
-cd frontend
-npx vercel --prod
-```
-
-Or connect the GitHub repo in the Vercel dashboard. Set `VITE_API_URL` to your Render backend URL.
-
-### Environment variables summary
-
-| Variable | Where | Required |
-|---|---|---|
-| `SECRET_KEY` | Backend | Yes — generate with `openssl rand -hex 32` |
-| `GOOGLE_API_KEY` | Backend | Yes — free from [aistudio.google.com](https://aistudio.google.com/app/apikey) |
-| `SUPABASE_URL` | Backend | Yes |
-| `SUPABASE_ANON_KEY` | Backend | Yes |
-| `SUPABASE_SERVICE_KEY` | Backend | Yes |
-| `DATABASE_URL` | Backend | Yes — `postgresql+asyncpg://...` |
-| `REDIS_URL` | Backend | Recommended |
-| `SENTRY_DSN` | Backend | Optional |
-| `VITE_API_URL` | Frontend | Production only |
+- [ ] Multi-document cross-querying
+- [ ] Team workspaces & collaboration
+- [ ] Webhook support for document events
+- [ ] OpenAI / Anthropic model switcher
+- [ ] Browser extension for web page analysis
+- [ ] Self-hosted / open-source edition
 
 ---
 
-## API Reference
+## 🤝 Contributing
 
-| Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/v1/auth/register` | — | Create account |
-| POST | `/api/v1/auth/login` | — | Get tokens |
-| POST | `/api/v1/auth/refresh` | — | Rotate access token |
-| GET | `/api/v1/auth/me` | JWT | Current user profile |
-| POST | `/api/v1/documents/upload` | JWT | Upload document (async processing) |
-| GET | `/api/v1/documents/` | JWT | List documents (paginated) |
-| GET | `/api/v1/documents/{id}` | JWT | Document metadata + status |
-| GET | `/api/v1/documents/{id}/analysis` | JWT | Full AI analysis |
-| DELETE | `/api/v1/documents/{id}` | JWT | Delete document + cleanup |
-| POST | `/api/v1/query/` | JWT | RAG Q&A |
-| GET | `/api/v1/query/history` | JWT | Query history |
-| GET | `/api/v1/analytics/me` | JWT | Personal usage stats |
-| GET | `/api/v1/analytics/admin` | Admin JWT | System-wide analytics |
+Contributions are welcome! Please open an issue first to discuss what you'd like to change.
 
-Full interactive docs: `http://localhost:8000/api/docs`
+1. Fork the repo
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add amazing feature'`
+4. Push and open a Pull Request
 
 ---
 
-## What This Demonstrates
+## ⚖️ License
 
-This project was built to show real engineering skill — not tutorial-level demos.
-
-**Backend engineering**
-- Async FastAPI with proper service separation (no "god files")
-- JWT auth with access + refresh token rotation
-- PostgreSQL RLS — security at the data layer, not just the API layer
-- Background task pipeline with status tracking
-- Connection pooling, structured logging, global error handling
-
-**AI system design**
-- RAG pipeline: chunking → embeddings → FAISS → retrieval → grounded generation
-- Hierarchical (map-reduce) summarization for large documents
-- Structured JSON prompting with response validation
-- Cost controls: Gemini free tier ($0), token limits, Redis caching, rate limiting
-
-**Product thinking**
-- Upload UX: immediate 202 response, background processing, polling
-- Cache hit rate tracked in analytics (shows cost awareness)
-- Per-user data isolation at DB + storage layer
-- Graceful degradation (Redis optional, cache falls back to memory)
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
 
 ---
 
-## Author
+## 👤 Author
 
-**Salim** — CS Graduate, Al Akhawayn University  
-Backend Engineering · AI Integration · FinTech
+**Salim Taghzouti** — Full-Stack AI Engineer
 
-- GitHub: [@SalimTag](https://github.com/SalimTag)
-- LinkedIn: [linkedin.com/in/salim](https://linkedin.com)
+[![GitHub](https://img.shields.io/badge/GitHub-@SalimTag-181717?logo=github)](https://github.com/SalimTag)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?logo=linkedin)](https://linkedin.com/in/salim)
 
 ---
 
-## License
-
-MIT — see [LICENSE](LICENSE)
+<p align="center">Built with ❤️ using FastAPI, React, and Google Gemini</p>
