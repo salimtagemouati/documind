@@ -4,7 +4,9 @@ Never hardcode secrets. Use .env locally, set env vars in production.
 """
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-from typing import List
+from typing import List, Union, Any
+from pydantic import field_validator
+import json
 
 
 class Settings(BaseSettings):
@@ -20,6 +22,20 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "https://documind.vercel.app"]
+
+    @field_validator("ALLOWED_ORIGINS", "ALLOWED_EXTENSIONS", mode="before")
+    @classmethod
+    def parse_list_vars(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            # Try to parse as JSON first (e.g. '["a", "b"]')
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            # Fallback to comma-separated string (e.g. 'a, b, c')
+            return [i.strip() for i in v.split(",") if i.strip()]
+        return v
 
     # ─── Database (Supabase / PostgreSQL) ───────────────────────────────────
     SUPABASE_URL: str
