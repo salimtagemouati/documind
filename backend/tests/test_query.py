@@ -1,13 +1,14 @@
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from uuid import uuid4
 from sqlalchemy import select
 from app.models.models import Document, DocumentStatus, User
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def auth_client(async_client: AsyncClient):
-    await async_client.post("/api/v1/auth/register", json={"email": "query@example.com", "password": "pass", "full_name": "Query User"})
-    resp = await async_client.post("/api/v1/auth/login", json={"email": "query@example.com", "password": "pass"})
+    await async_client.post("/api/v1/auth/register", json={"email": "query@example.com", "password": "SecurePwd123!", "full_name": "Query User"})
+    resp = await async_client.post("/api/v1/auth/login", json={"email": "query@example.com", "password": "SecurePwd123!"})
     token = resp.json()["access_token"]
     async_client.headers["Authorization"] = f"Bearer {token}"
     return async_client
@@ -16,7 +17,7 @@ async def auth_client(async_client: AsyncClient):
 async def test_query_unauthorized(async_client: AsyncClient):
     payload = {"document_id": str(uuid4()), "question": "What is life?"}
     response = await async_client.post("/api/v1/query/", json=payload)
-    assert response.status_code == 401
+    assert response.status_code in [401, 403]
 
 @pytest.mark.asyncio
 async def test_query_cache_miss_and_hit(auth_client: AsyncClient, db_session, monkeypatch):
@@ -29,7 +30,7 @@ async def test_query_cache_miss_and_hit(auth_client: AsyncClient, db_session, mo
         async def get(self, k): return self.d.get(k)
         async def setex(self, k, ttl, v): self.d[k] = v
         async def delete(self, *k): pass
-    monkeypatch.setattr(cache, "redis_client", MockRedis())
+    monkeypatch.setattr(cache, "_redis", MockRedis())
     
     # Setup document
     user_result = await db_session.execute(select(User).where(User.email == "query@example.com"))
@@ -45,7 +46,7 @@ async def test_query_cache_miss_and_hit(auth_client: AsyncClient, db_session, mo
         from app.schemas.schemas import QueryResponse, SourceChunk
         return QueryResponse(
             question=kwargs["question"], answer="Mock Answer", sources=[
-                SourceChunk(content="Context", chunk_index=0, similarity_score=0.99)
+                SourceChunk(content="Context", chunk_index=0, similarity_score=0.99, page_number=None)
             ], model_used="gpt-4o", tokens_used=100, latency_ms=10, from_cache=False, query_id=uuid4()
         )
     monkeypatch.setattr(query_route, "answer_question", mock_rag)

@@ -13,6 +13,9 @@ settings = get_settings()
 
 
 def configure_logging() -> None:
+    # Basic standard logging config to hook into structlog
+    logging.basicConfig(format="%(message)s", stream=sys.stdout, level=logging.INFO)
+
     shared_processors = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
@@ -35,9 +38,9 @@ def configure_logging() -> None:
 
     structlog.configure(
         processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG),
+        wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(sys.stdout),
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 

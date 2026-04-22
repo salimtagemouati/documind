@@ -7,7 +7,10 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Optional
 from jose import JWTError, jwt
+import bcrypt
+import bcrypt
 from passlib.context import CryptContext
 
 from app.core.config import get_settings
