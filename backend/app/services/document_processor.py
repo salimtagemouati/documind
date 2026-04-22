@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import List, Tuple
 
 import tiktoken
-from pypdf import PdfReader
 from docx import Document as DocxDocument
+from pypdf import PdfReader
 
 from app.core.config import get_settings
 from app.core.logging import get_logger

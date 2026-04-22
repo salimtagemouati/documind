@@ -9,28 +9,47 @@ DELETE /api/v1/documents/{id}     — delete document + cleanup
 """
 import asyncio
 import uuid
-from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status, BackgroundTasks
-from sqlalchemy import select, func
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user
 from app.core.config import get_settings
+from app.core.logging import get_logger
+from app.core.security import get_current_user
 from app.db.database import get_db, get_supabase_admin
 from app.models.models import Document, DocumentChunk, DocumentStatus, User
 from app.schemas.schemas import (
-    DocumentUploadResponse, DocumentMeta, DocumentAnalysis,
-    EntityExtractionResult, SentimentResult, PaginatedResponse, MessageResponse,
+    DocumentAnalysis,
+    DocumentMeta,
+    DocumentUploadResponse,
+    EntityExtractionResult,
+    MessageResponse,
+    PaginatedResponse,
+    SentimentResult,
 )
-from app.services.document_processor import extract_text, chunk_text, validate_file
-from app.services.rag_service import build_document_index, delete_document_index
-from app.services.ai_service import summarize_document, extract_entities, analyze_sentiment, extract_keywords
-from app.services.cache_service import get_cached_analysis, set_cached_analysis, invalidate_document_cache
+from app.services.ai_service import (
+    analyze_sentiment,
+    extract_entities,
+    extract_keywords,
+    summarize_document,
+)
+from app.services.cache_service import (
+    invalidate_document_cache,
+)
+from app.services.document_processor import chunk_text, extract_text, validate_file
 from app.services.progress_service import publish_progress
+from app.services.rag_service import build_document_index, delete_document_index
 from app.services.stripe_service import check_document_limit
-from app.core.logging import get_logger
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 settings = get_settings()

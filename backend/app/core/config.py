@@ -2,12 +2,13 @@
 Application configuration — all settings loaded from environment variables.
 Never hardcode secrets. Use .env locally, set env vars in production.
 """
-from pydantic_settings import BaseSettings
-from functools import lru_cache
-from typing import List, Union, Any
-from pydantic import field_validator
-import json
 import ast
+import json
+from functools import lru_cache
+from typing import Any, List
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):

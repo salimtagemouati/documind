@@ -3,14 +3,10 @@ Authentication layer — JWT creation, verification, and FastAPI dependencies.
 Supports access tokens (short-lived) and refresh tokens (long-lived).
 """
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Optional
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-import bcrypt
-import bcrypt
 from passlib.context import CryptContext
 
 from app.core.config import get_settings

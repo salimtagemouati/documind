@@ -24,13 +24,13 @@ Messages sent to client:
 """
 import asyncio
 import json
-
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from sqlalchemy import select
 from uuid import UUID
 
-from app.core.security import decode_token
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
+
 from app.core.logging import get_logger
+from app.core.security import decode_token
 from app.db.database import AsyncSessionLocal
 from app.models.models import Document, DocumentStatus
 from app.services.progress_service import subscribe_progress

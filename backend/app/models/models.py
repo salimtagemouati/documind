@@ -2,16 +2,24 @@
 SQLAlchemy ORM models for async PostgreSQL (via asyncpg).
 These mirror the Supabase table definitions — keep them in sync.
 """
+import enum
 import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, ForeignKey,
-    Integer, String, Text, JSON, Enum as SAEnum
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
 )
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import DeclarativeBase, relationship
-import enum
 
 
 class Base(DeclarativeBase):

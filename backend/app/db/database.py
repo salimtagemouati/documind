@@ -5,7 +5,7 @@ Uses connection pooling for production-grade throughput.
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 from app.core.config import get_settings
 from app.core.logging import get_logger

@@ -7,16 +7,26 @@ Cost: $0 on Gemini 1.5 Flash free tier.
 """
 import json
 import time
-from typing import List, Optional
+from typing import List
 from uuid import UUID
 
 import google.generativeai as genai
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.schemas.schemas import (
+    EntityExtractionResult,
+    QueryResponse,
+    SentimentResult,
+    SourceChunk,
+)
 from app.services.rag_service import retrieve_similar_chunks
-from app.schemas.schemas import EntityExtractionResult, SentimentResult, QueryResponse, SourceChunk
 
 settings = get_settings()
 logger = get_logger(__name__)

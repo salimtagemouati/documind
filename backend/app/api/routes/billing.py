@@ -9,8 +9,9 @@ POST /api/v1/billing/webhook        — Stripe webhook endpoint (no auth, signat
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user
 from app.core.config import get_settings
+from app.core.logging import get_logger
+from app.core.security import get_current_user
 from app.db.database import get_db
 from app.services.stripe_service import (
     create_checkout_session,
@@ -18,7 +19,6 @@ from app.services.stripe_service import (
     get_subscription_status,
     handle_webhook,
 )
-from app.core.logging import get_logger
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 settings = get_settings()
