@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_KEY: str              # Server-side admin key
     DATABASE_URL: str                      # postgresql+asyncpg://user:pass@host/db
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def fix_database_url(cls, v: str) -> str:
+        if isinstance(v, str):
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
+
     # ─── Storage ────────────────────────────────────────────────────────────
     SUPABASE_BUCKET: str = "documents"
     MAX_FILE_SIZE_MB: int = 20

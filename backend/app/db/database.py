@@ -24,8 +24,10 @@ if "sqlite" not in settings.DATABASE_URL:
     engine_kwargs["pool_size"] = 10
     engine_kwargs["max_overflow"] = 20
 
+_url = str(settings.DATABASE_URL)
+_url = _url.replace("postgres://", "postgresql+asyncpg://", 1).replace("postgresql://", "postgresql+asyncpg://", 1)
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _url,
     **engine_kwargs
 )
 
