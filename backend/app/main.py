@@ -14,14 +14,14 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
+from app.api.routes import analytics, auth, billing, documents, query, ws
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
-from app.db.database import init_db, close_db
-from app.api.routes import auth, documents, query, analytics, ws, billing
+from app.db.database import close_db, init_db
 
 settings = get_settings()
 configure_logging()

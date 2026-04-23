@@ -3,17 +3,18 @@ Analytics API Routes
 GET /api/v1/analytics/me      — personal usage stats
 GET /api/v1/analytics/admin   — system-wide stats (admin only)
 """
-from fastapi import APIRouter, Depends
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
-from app.core.security import get_current_user, get_current_admin
-from app.db.database import get_db
-from app.models.models import User, Document, QueryHistory, DailyStats
-from app.schemas.schemas import UserStats, AdminStats
-from app.services.cache_service import get_cache_stats
+from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.logging import get_logger
+from app.core.security import get_current_admin, get_current_user
+from app.db.database import get_db
+from app.models.models import Document, QueryHistory, User
+from app.schemas.schemas import AdminStats, UserStats
+from app.services.cache_service import get_cache_stats
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 logger = get_logger(__name__)
@@ -34,7 +35,7 @@ async def get_my_stats(
     # Compute average query latency
     latency_result = await db.execute(
         select(func.avg(QueryHistory.latency_ms))
-        .where(QueryHistory.user_id == user_id, QueryHistory.from_cache == False)
+        .where(QueryHistory.user_id == user_id, QueryHistory.from_cache.is_(False))
     )
     avg_latency = latency_result.scalar()
 
@@ -42,7 +43,7 @@ async def get_my_stats(
     total_queries = user.queries_made or 0
     cached_result = await db.execute(
         select(func.count(QueryHistory.id))
-        .where(QueryHistory.user_id == user_id, QueryHistory.from_cache == True)
+        .where(QueryHistory.user_id == user_id, QueryHistory.from_cache.is_(True))
     )
     cached_count = cached_result.scalar() or 0
     cache_hit_rate = round(cached_count / max(total_queries, 1), 3)

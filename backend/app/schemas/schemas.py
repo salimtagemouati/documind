@@ -3,8 +3,9 @@ Pydantic schemas — strict input validation and clean API response shapes.
 Never expose internal model fields (hashed_password, storage_path, etc.) to the client.
 """
 from __future__ import annotations
+
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import Any, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator

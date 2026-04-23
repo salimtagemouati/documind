@@ -4,23 +4,25 @@ POST /api/v1/query/          — ask a question about a document
 GET  /api/v1/query/history   — get user's query history
 """
 import uuid
-from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.core.security import get_current_user
 from app.db.database import get_db
 from app.models.models import Document, DocumentStatus, QueryHistory, User
 from app.schemas.schemas import (
-    QueryRequest, QueryResponse, QueryHistoryItem, PaginatedResponse
+    PaginatedResponse,
+    QueryHistoryItem,
+    QueryRequest,
+    QueryResponse,
 )
 from app.services.ai_service import answer_question
 from app.services.cache_service import get_cached_answer, set_cached_answer
 from app.services.stripe_service import check_query_limit, increment_daily_queries
-from app.core.logging import get_logger
 
 router = APIRouter(prefix="/query", tags=["Q&A"])
 logger = get_logger(__name__)
@@ -140,6 +142,7 @@ async def get_query_history(
 ):
     """Get the user's Q&A history, optionally filtered by document."""
     from uuid import UUID as UUIDType
+
     from sqlalchemy import func
 
     user_id = UUIDType(current_user["sub"])

@@ -12,10 +12,10 @@ Webhook events handled:
 - customer.subscription.deleted: cancellation
 - invoice.payment_failed: payment issue
 """
-import stripe
 from datetime import datetime, timezone
 from uuid import UUID
 
+import stripe
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

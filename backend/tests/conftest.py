@@ -17,7 +17,8 @@ def compile_uuid(element, compiler, **kw):
 def compile_array(element, compiler, **kw):
     return "JSON"
 
-from app.db.database import get_db, Base
+from app.db.database import get_db
+from app.models.models import Base
 from app.main import app
 from app.core.config import get_settings
 
@@ -82,7 +83,7 @@ def mock_gemini():
          patch("app.services.rag_service.genai") as mock_rag_genai:
 
         # Mock embeddings (768 dimensions for Gemini text-embedding-004)
-        mock_embed_result = {"embedding": [[0.1] * 768]}
+        mock_embed_result = {"embedding": [0.1] * 768}
         mock_rag_genai.embed_content.return_value = mock_embed_result
         mock_genai.embed_content.return_value = mock_embed_result
 

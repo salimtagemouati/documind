@@ -2,11 +2,13 @@
 Application configuration — all settings loaded from environment variables.
 Never hardcode secrets. Use .env locally, set env vars in production.
 """
-from pydantic_settings import BaseSettings
-from functools import lru_cache
-from typing import List, Union, Any
-from pydantic import field_validator
+import ast
 import json
+from functools import lru_cache
+from typing import Any, List
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -21,7 +23,11 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "https://documind.vercel.app"]
+
+    # Render env vars might be parsed as strings by pydantic_settings JSON decode
+    # if we use `List[str]`, so we tell pydantic_settings not to automatically parse
+    # it as JSON by making the type hint `str | List[str]` initially, then forcing it.
+    ALLOWED_ORIGINS: Any = ["http://localhost:5173", "https://documind.vercel.app"]
 
     @field_validator("ALLOWED_ORIGINS", "ALLOWED_EXTENSIONS", mode="before")
     @classmethod
@@ -32,7 +38,10 @@ class Settings(BaseSettings):
                 try:
                     return json.loads(v)
                 except Exception:
-                    pass
+                    try:
+                        return ast.literal_eval(v)
+                    except Exception:
+                        pass
             # Fallback to comma-separated string (e.g. 'a, b, c')
             return [i.strip() for i in v.split(",") if i.strip()]
         return v
@@ -46,7 +55,7 @@ class Settings(BaseSettings):
     # ─── Storage ────────────────────────────────────────────────────────────
     SUPABASE_BUCKET: str = "documents"
     MAX_FILE_SIZE_MB: int = 20
-    ALLOWED_EXTENSIONS: List[str] = ["pdf", "txt", "docx", "md"]
+    ALLOWED_EXTENSIONS: Any = ["pdf", "txt", "docx", "md"]
 
     # ─── AI / LLM — Google Gemini (free tier) ───────────────────────────────
     GOOGLE_API_KEY: str

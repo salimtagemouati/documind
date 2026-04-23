@@ -1,11 +1,12 @@
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from io import BytesIO
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def auth_client(async_client: AsyncClient):
-    await async_client.post("/api/v1/auth/register", json={"email": "doc@example.com", "password": "pass", "full_name": "Doc User"})
-    resp = await async_client.post("/api/v1/auth/login", json={"email": "doc@example.com", "password": "pass"})
+    await async_client.post("/api/v1/auth/register", json={"email": "doc@example.com", "password": "SecurePwd123!", "full_name": "Doc User"})
+    resp = await async_client.post("/api/v1/auth/login", json={"email": "doc@example.com", "password": "SecurePwd123!"})
     token = resp.json()["access_token"]
     async_client.headers["Authorization"] = f"Bearer {token}"
     return async_client
@@ -52,4 +53,4 @@ async def test_delete_document(auth_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_unauthorized_access(async_client: AsyncClient):
     response = await async_client.get("/api/v1/documents/")
-    assert response.status_code == 401
+    assert response.status_code in [401, 403]

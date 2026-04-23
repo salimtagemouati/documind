@@ -13,16 +13,14 @@ Why FAISS over a managed vector DB?
   with a one-function change to `_search_similar`
 """
 import asyncio
-import json
-import os
 import pickle
 from pathlib import Path
 from typing import List, Tuple
 from uuid import UUID
 
 import faiss
-import numpy as np
 import google.generativeai as genai
+import numpy as np
 
 from app.core.config import get_settings
 from app.core.logging import get_logger

@@ -9,18 +9,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import get_logger
 from app.core.security import (
-    hash_password, verify_password,
-    create_access_token, create_refresh_token, decode_token,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
     get_current_user,
+    hash_password,
+    verify_password,
 )
 from app.db.database import get_db
 from app.models.models import User
 from app.schemas.schemas import (
-    RegisterRequest, LoginRequest, TokenResponse,
-    RefreshRequest, UserPublic, MessageResponse,
+    LoginRequest,
+    RefreshRequest,
+    RegisterRequest,
+    TokenResponse,
+    UserPublic,
 )
-from app.core.logging import get_logger
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = get_logger(__name__)

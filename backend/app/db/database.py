@@ -5,7 +5,7 @@ Uses connection pooling for production-grade throughput.
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -15,13 +15,18 @@ logger = get_logger(__name__)
 
 # ─── Async SQLAlchemy engine ─────────────────────────────────────────────────
 # Pool settings tuned for a small SaaS: max 10 connections, recycle after 30 min
+engine_kwargs = {
+    "pool_recycle": 1800,
+    "pool_pre_ping": True,
+    "echo": settings.DEBUG,
+}
+if "sqlite" not in settings.DATABASE_URL:
+    engine_kwargs["pool_size"] = 10
+    engine_kwargs["max_overflow"] = 20
+
 engine = create_async_engine(
     settings.DATABASE_URL,
-    pool_size=10,
-    max_overflow=20,
-    pool_recycle=1800,
-    pool_pre_ping=True,          # Validate connections before use
-    echo=settings.DEBUG,         # Log SQL in debug mode
+    **engine_kwargs
 )
 
 AsyncSessionLocal = async_sessionmaker(
