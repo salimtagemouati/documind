@@ -61,14 +61,6 @@ class User(Base):
     queries_made = Column(Integer, default=0)
     ai_tokens_used = Column(Integer, default=0)
 
-    # Billing (Stripe)
-    stripe_customer_id = Column(String(255), unique=True, nullable=True)
-    subscription_status = Column(String(50), default="inactive")   # active | inactive | trialing | canceled | past_due
-    subscription_tier = Column(String(50), default="free")          # free | pro
-    stripe_subscription_id = Column(String(255), nullable=True)
-    daily_queries_count = Column(Integer, default=0)
-    daily_queries_date = Column(DateTime(timezone=True), nullable=True)
-
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
-from app.api.routes import analytics, auth, billing, documents, query, ws
+from app.api.routes import analytics, auth, documents, query, ws
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.db.database import close_db, init_db
@@ -94,7 +94,6 @@ app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(documents.router, prefix=API_PREFIX)
 app.include_router(query.router, prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
-app.include_router(billing.router, prefix=API_PREFIX)
 app.include_router(ws.router, prefix=API_PREFIX)
 
 

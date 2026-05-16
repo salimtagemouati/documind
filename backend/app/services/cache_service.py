@@ -48,11 +48,20 @@ async def get_redis() -> Optional[Any]:
     return _redis
 
 
-def _make_cache_key(prefix: str, *parts: str) -> str:
-    """Stable, collision-resistant cache key."""
+def _make_cache_key(prefix: str, document_id: str, *parts: str) -> str:
+    """
+    Stable, collision-resistant cache key.
+
+    Format: documind:{prefix}:{document_id}:{digest}
+
+    The raw document_id is embedded in the key so that pattern-based
+    invalidation (`documind:*:{document_id}*`) actually finds the keys.
+    The trailing digest preserves uniqueness across questions /
+    analysis types within a single document.
+    """
     raw = "|".join(str(p) for p in parts)
     digest = hashlib.sha256(raw.encode()).hexdigest()[:16]
-    return f"documind:{prefix}:{digest}"
+    return f"documind:{prefix}:{document_id}:{digest}"
 
 
 def _normalize_question(q: str) -> str:
@@ -87,7 +96,7 @@ async def set_cached_answer(document_id: str, question: str, data: dict) -> None
 
 async def get_cached_analysis(document_id: str, analysis_type: str) -> Optional[dict]:
     """Cache document analysis results (summary, entities, sentiment)."""
-    key = _make_cache_key(analysis_type, document_id)
+    key = _make_cache_key(analysis_type, document_id, analysis_type)
     r = await get_redis()
     if r:
         val = await r.get(key)
@@ -96,7 +105,7 @@ async def get_cached_analysis(document_id: str, analysis_type: str) -> Optional[
 
 
 async def set_cached_analysis(document_id: str, analysis_type: str, data: dict) -> None:
-    key = _make_cache_key(analysis_type, document_id)
+    key = _make_cache_key(analysis_type, document_id, analysis_type)
     r = await get_redis()
     if r:
         await r.setex(key, settings.CACHE_TTL_SECONDS, json.dumps(data))
@@ -108,13 +117,14 @@ async def invalidate_document_cache(document_id: str) -> None:
     """Delete all cache entries related to a document."""
     r = await get_redis()
     if r:
-        pattern = f"documind:*:{document_id}*"
+        # Matches documind:{any-prefix}:{document_id}:{any-digest}
+        pattern = f"documind:*:{document_id}:*"
         keys = await r.keys(pattern)
         if keys:
             await r.delete(*keys)
             logger.info("cache_invalidated", document_id=document_id, keys=len(keys))
     else:
-        to_delete = [k for k in _memory_cache if document_id in k]
+        to_delete = [k for k in _memory_cache if f":{document_id}:" in k]
         for k in to_delete:
             del _memory_cache[k]
 

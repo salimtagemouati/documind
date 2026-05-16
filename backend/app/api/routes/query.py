@@ -22,7 +22,6 @@ from app.schemas.schemas import (
 )
 from app.services.ai_service import answer_question
 from app.services.cache_service import get_cached_answer, set_cached_answer
-from app.services.stripe_service import check_query_limit, increment_daily_queries
 
 router = APIRouter(prefix="/query", tags=["Q&A"])
 logger = get_logger(__name__)
@@ -74,10 +73,7 @@ async def query_document(
         return QueryResponse(**cached)
 
     # ── Tier enforcement: check daily query limit (only for non-cached) ───
-    try:
-        await check_query_limit(str(user_id), db)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+    # No quota enforcement on queries — only document upload is capped.
 
     # Run RAG pipeline
     response = await answer_question(
@@ -110,10 +106,6 @@ async def query_document(
         user.queries_made = (user.queries_made or 0) + 1
         user.ai_tokens_used = (user.ai_tokens_used or 0) + response.tokens_used
 
-    await db.commit()
-
-    # Track daily query count for tier enforcement
-    await increment_daily_queries(str(user_id), db)
     await db.commit()
 
     # Cache the response (serialize for storage)

@@ -79,14 +79,9 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
     CACHE_TTL_SECONDS: int = 3600        # 1 hour default TTL
 
-    # ─── Stripe (billing) ───────────────────────────────────────────────────
-    STRIPE_SECRET_KEY: str = ""
-    STRIPE_PUBLISHABLE_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""
-    STRIPE_PRICE_ID_PRO: str = ""       # Monthly Pro plan price ID
-    STRIPE_FREE_DOC_LIMIT: int = 3
-    STRIPE_FREE_QUERY_LIMIT: int = 20   # Per day
-    FRONTEND_URL: str = "http://localhost:5173"
+    # ─── Quotas (no billing) ────────────────────────────────────────────────
+    # Maximum number of documents a single account can process. Set to 0 to disable.
+    FREE_DOC_LIMIT: int = 10
 
     # ─── Monitoring ─────────────────────────────────────────────────────────
     SENTRY_DSN: str = ""

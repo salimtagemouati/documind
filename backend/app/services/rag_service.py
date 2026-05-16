@@ -14,7 +14,9 @@ Why FAISS over a managed vector DB?
 """
 import asyncio
 import pickle
+from collections import OrderedDict
 from pathlib import Path
+from threading import Lock
 from typing import List, Tuple
 from uuid import UUID
 
@@ -53,14 +55,15 @@ async def embed_texts(texts: List[str]) -> np.ndarray:
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
 
-        # embed_content is synchronous — run in executor to avoid blocking
-        result = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda b=batch: genai.embed_content(
-                model=f"models/{settings.GEMINI_EMBEDDING_MODEL}",
-                content=b,
-                task_type="RETRIEVAL_DOCUMENT",
-            ),
+        # embed_content is synchronous — run in a worker thread so the
+        # event loop stays free. asyncio.to_thread is the modern replacement
+        # for asyncio.get_event_loop().run_in_executor and works correctly
+        # on Python 3.10+.
+        result = await asyncio.to_thread(
+            genai.embed_content,
+            model=f"models/{settings.GEMINI_EMBEDDING_MODEL}",
+            content=batch,
+            task_type="RETRIEVAL_DOCUMENT",
         )
         batch_embeddings = result["embedding"]
         # Single text returns a flat list, multiple returns list of lists
@@ -74,13 +77,11 @@ async def embed_texts(texts: List[str]) -> np.ndarray:
 
 async def embed_query(query: str) -> np.ndarray:
     """Embed a single query string (uses RETRIEVAL_QUERY task type for better retrieval)."""
-    result = await asyncio.get_event_loop().run_in_executor(
-        None,
-        lambda: genai.embed_content(
-            model=f"models/{settings.GEMINI_EMBEDDING_MODEL}",
-            content=query,
-            task_type="RETRIEVAL_QUERY",
-        ),
+    result = await asyncio.to_thread(
+        genai.embed_content,
+        model=f"models/{settings.GEMINI_EMBEDDING_MODEL}",
+        content=query,
+        task_type="RETRIEVAL_QUERY",
     )
     embedding = result["embedding"]
     return np.array(embedding, dtype=np.float32)
@@ -95,8 +96,49 @@ def _meta_path(document_id: UUID) -> Path:
     return FAISS_INDEX_DIR / f"{document_id}.meta"
 
 
+# ─── In-memory cache for loaded FAISS indexes ────────────────────────────────
+# Loading a FAISS index from disk + unpickling its metadata is a measurable hit
+# on every query. Indexes are immutable per document — once written, they only
+# change via `_save_index` (rebuild) or `delete_document_index` (deletion),
+# both of which explicitly invalidate the cache entry below.
+#
+# We cap the cache so a tenant with thousands of docs doesn't OOM a worker.
+_INDEX_CACHE_MAX = 128
+_index_cache: "OrderedDict[UUID, Tuple[faiss.Index, List[dict]]]" = OrderedDict()
+_index_cache_lock = Lock()
+
+
+def _cache_get(document_id: UUID) -> Tuple[faiss.Index, List[dict]] | None:
+    with _index_cache_lock:
+        if document_id in _index_cache:
+            _index_cache.move_to_end(document_id)
+            return _index_cache[document_id]
+    return None
+
+
+def _cache_put(document_id: UUID, index: faiss.Index, metadata: List[dict]) -> None:
+    with _index_cache_lock:
+        _index_cache[document_id] = (index, metadata)
+        _index_cache.move_to_end(document_id)
+        while len(_index_cache) > _INDEX_CACHE_MAX:
+            _index_cache.popitem(last=False)
+
+
+def _cache_invalidate(document_id: UUID) -> None:
+    with _index_cache_lock:
+        _index_cache.pop(document_id, None)
+
+
 def _load_index(document_id: UUID) -> Tuple[faiss.Index, List[dict]] | Tuple[None, None]:
-    """Load FAISS index and chunk metadata from disk. Returns (None, None) if not found."""
+    """Load FAISS index and chunk metadata from disk. Returns (None, None) if not found.
+
+    Result is memoized in a bounded LRU cache; subsequent retrievals on the
+    same document skip the disk read entirely.
+    """
+    cached = _cache_get(document_id)
+    if cached is not None:
+        return cached
+
     idx_path = _index_path(document_id)
     meta_path = _meta_path(document_id)
 
@@ -107,6 +149,7 @@ def _load_index(document_id: UUID) -> Tuple[faiss.Index, List[dict]] | Tuple[Non
     with open(meta_path, "rb") as f:
         metadata = pickle.load(f)
 
+    _cache_put(document_id, index, metadata)
     return index, metadata
 
 
@@ -114,6 +157,8 @@ def _save_index(document_id: UUID, index: faiss.Index, metadata: List[dict]) -> 
     faiss.write_index(index, str(_index_path(document_id)))
     with open(_meta_path(document_id), "wb") as f:
         pickle.dump(metadata, f)
+    # Refresh the in-memory cache so subsequent reads see the new index
+    _cache_put(document_id, index, metadata)
     logger.info("faiss_index_saved", document_id=str(document_id), vectors=index.ntotal)
 
 
@@ -214,6 +259,7 @@ def delete_document_index(document_id: UUID) -> None:
     for path in [_index_path(document_id), _meta_path(document_id)]:
         if path.exists():
             path.unlink()
+    _cache_invalidate(document_id)
     logger.info("faiss_index_deleted", document_id=str(document_id))
 
 
@@ -229,6 +275,9 @@ def purge_all_indexes() -> int:
             if f.suffix in (".faiss", ".meta"):
                 f.unlink()
                 deleted += 1
+    # Drop any cached indexes — they'd be stale anyway
+    with _index_cache_lock:
+        _index_cache.clear()
     if deleted:
         logger.warning("faiss_indexes_purged", files_deleted=deleted,
                         reason="Embedding model changed — old indexes incompatible")

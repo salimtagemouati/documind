@@ -61,17 +61,9 @@ services:
       - key: ALLOWED_ORIGINS
         value: '["https://documind.vercel.app","https://www.documind.app"]'
 
-      # Stripe billing (set manually in Render dashboard)
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: STRIPE_PUBLISHABLE_KEY
-        sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: STRIPE_PRICE_ID_PRO
-        sync: false
-      - key: FRONTEND_URL
-        value: https://documind.vercel.app
+      # Quotas (no billing)
+      - key: FREE_DOC_LIMIT
+        value: "10"
 
       # Monitoring (optional)
       - key: SENTRY_DSN

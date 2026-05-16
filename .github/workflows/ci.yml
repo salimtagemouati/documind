@@ -72,10 +72,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost/test
           REDIS_URL: redis://localhost:6379
           ENVIRONMENT: test
-          STRIPE_SECRET_KEY: ""
-          STRIPE_PUBLISHABLE_KEY: ""
-          STRIPE_WEBHOOK_SECRET: ""
-        run: pytest tests/ -v --tb=short || echo "No tests found — skipping"
+        run: pytest tests/ -v --tb=short
 
   # ─── Frontend: typecheck + build ────────────────────────────
   frontend:

@@ -10,7 +10,6 @@
 - [x] GitHub repository with DocuMind code pushed
 - [x] Supabase project created (PostgreSQL + Storage)
 - [x] Google AI Studio API key (free) → [aistudio.google.com](https://aistudio.google.com/app/apikey)
-- [x] Stripe account (for billing)
 - [ ] Render account → [render.com](https://render.com)
 - [ ] Vercel account → [vercel.com](https://vercel.com)
 
@@ -18,14 +17,11 @@
 
 ## 1. Database Setup (Supabase)
 
-Run the migration scripts in your Supabase SQL editor:
+Run the schema migration in your Supabase SQL editor:
 
 ```sql
--- Step 1: Initial schema
+-- Initial schema
 -- Copy contents of scripts/001_init_schema.sql
-
--- Step 2: Billing columns (Phase 3)
--- Copy contents of backend/migrations/002_add_billing.sql
 ```
 
 Create a storage bucket:
@@ -59,62 +55,49 @@ Create a storage bucket:
 4. Render will create:
    - `documind-api` (Web Service, Docker)
    - `documind-redis` (Redis instance)
-5. Fill in the environment variables marked `sync: false`:
-
-| Variable | Where to get it |
-|----------|----------------|
-| `SUPABASE_URL` | Supabase → Settings → API → URL |
-| `SUPABASE_ANON_KEY` | Supabase → Settings → API → `anon` key |
-| `SUPABASE_SERVICE_KEY` | Supabase → Settings → API → `service_role` key |
-| `DATABASE_URL` | Supabase → Settings → Database → Connection string (URI) |
-| `GOOGLE_API_KEY` | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
-| `STRIPE_SECRET_KEY` | Stripe → Developers → API keys → Secret key |
-| `STRIPE_PUBLISHABLE_KEY` | Stripe → Developers → API keys → Publishable key |
-| `STRIPE_WEBHOOK_SECRET` | See step 3c below |
-| `STRIPE_PRICE_ID_PRO` | See step 3b below |
-| `SENTRY_DSN` | Optional — [sentry.io](https://sentry.io) |
+5. Fill in the environment variables marked `sync: false` (see the full env matrix below).
 
 ### Option B: Manual
 
 1. **New Web Service** → Docker → Root: `backend`
 2. **New Redis** → Connect to web service via internal URL
-3. Set all env vars from the table above
+3. Set the env vars from the matrix below.
 
-### 3b. Stripe Product Setup
+### 3a. Backend Environment Variables (full matrix)
 
-1. Go to [Stripe Dashboard](https://dashboard.stripe.com) → **Products** → **Add Product**
-2. Name: `DocuMind Pro`
-3. Price: `$12.00/month` (recurring)
-4. Copy the **Price ID** (starts with `price_...`) → set as `STRIPE_PRICE_ID_PRO`
+| Variable | Required | Default | Where to get it / what it does |
+|----------|---------|---------|--------------------------------|
+| `SECRET_KEY` | ✅ | — | 32-byte hex string for JWT signing. Generate with `python -c "import secrets; print(secrets.token_hex(32))"` (Render can auto-generate via `generateValue: true`). |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | ⚠️ | `60` | Access-token lifetime in minutes. |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | ⚠️ | `30` | Refresh-token lifetime in days. |
+| `ALLOWED_ORIGINS` | ✅ | `["http://localhost:5173", …]` | JSON array of CORS-allowed origins. Include your Vercel frontend URL. |
+| `SUPABASE_URL` | ✅ | — | Supabase → Settings → API → URL. |
+| `SUPABASE_ANON_KEY` | ✅ | — | Supabase → Settings → API → `anon` key. |
+| `SUPABASE_SERVICE_KEY` | ✅ | — | Supabase → Settings → API → `service_role` key. **Never expose to the frontend.** |
+| `DATABASE_URL` | ✅ | — | Supabase → Settings → Database → Connection string (URI). Must use the `postgresql+asyncpg://` driver prefix. |
+| `SUPABASE_BUCKET` | ⚠️ | `documents` | Storage bucket name. |
+| `MAX_FILE_SIZE_MB` | ⚠️ | `20` | Reject uploads larger than this. |
+| `ALLOWED_EXTENSIONS` | ⚠️ | `["pdf","txt","docx","md"]` | JSON array of permitted file extensions. |
+| `GOOGLE_API_KEY` | ✅ | — | [aistudio.google.com](https://aistudio.google.com/app/apikey). |
+| `GEMINI_CHAT_MODEL` | ⚠️ | `gemini-1.5-flash` | Override to use a different Gemini model. |
+| `GEMINI_EMBEDDING_MODEL` | ⚠️ | `text-embedding-004` | Override only if you know what you're doing — must match the dimensionality FAISS expects. |
+| `CHUNK_SIZE` | ⚠️ | `800` | Token target per RAG chunk. |
+| `CHUNK_OVERLAP` | ⚠️ | `100` | Token overlap between consecutive chunks. |
+| `MAX_CHUNKS_PER_DOC` | ⚠️ | `200` | Hard cap on chunks per document (cost / latency control). |
+| `RAG_TOP_K` | ⚠️ | `6` | Chunks retrieved per query. |
+| `RAG_SIMILARITY_THRESHOLD` | ⚠️ | `0.70` | Minimum cosine similarity for a chunk to be considered relevant. |
+| `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW` | ⚠️ | `60` / `60` | Default per-IP rate limit (requests per window in seconds). |
+| `AI_RATE_LIMIT_REQUESTS` / `AI_RATE_LIMIT_WINDOW` | ⚠️ | `10` / `60` | Tighter limit for AI-touching endpoints. |
+| `REDIS_URL` | ✅ | `redis://localhost:6379` | Auto-wired from the Render Redis instance. Empty string disables Redis (in-memory fallback). |
+| `CACHE_TTL_SECONDS` | ⚠️ | `3600` | TTL for cached Q&A answers. |
+| `FREE_DOC_LIMIT` | ⚠️ | `10` | Max documents per account. Set to `0` to disable the cap. |
+| `SENTRY_DSN` | ❌ | `""` | Optional — enables Sentry error tracking. |
+| `ENVIRONMENT` | ⚠️ | `development` | One of `development` / `staging` / `production`. Affects Swagger exposure. |
+| `DEBUG` | ⚠️ | `false` | Enables SQL echo + verbose logging. **Must be `false` in production.** |
 
-### 3c. Stripe Webhook Setup
+✅ required · ⚠️ recommended · ❌ optional
 
-1. Go to Stripe → **Developers** → **Webhooks** → **Add endpoint**
-2. URL: `https://documind-api.onrender.com/api/v1/billing/webhook`
-3. Events to listen for:
-   - `checkout.session.completed`
-   - `customer.subscription.updated`
-   - `customer.subscription.deleted`
-   - `invoice.payment_failed`
-4. Copy the **Signing secret** (starts with `whsec_...`) → set as `STRIPE_WEBHOOK_SECRET`
-
-### 3d. Test Stripe Locally
-
-```bash
-# Install Stripe CLI
-brew install stripe/stripe-cli/stripe
-
-# Login
-stripe login
-
-# Forward webhooks to local backend
-stripe listen --forward-to localhost:8000/api/v1/billing/webhook
-
-# In another terminal, trigger test events
-stripe trigger checkout.session.completed
-```
-
-### 3e. Verify Backend
+### 3b. Verify Backend
 
 ```bash
 # Health check
@@ -163,7 +146,6 @@ curl https://documind-api.onrender.com/health
 1. Vercel → Project Settings → Domains
 2. Add your domain (e.g., `app.documind.com`)
 3. Update `ALLOWED_ORIGINS` on Render to include the new domain
-4. Update `FRONTEND_URL` on Render to the new domain
 
 ---
 
@@ -179,16 +161,15 @@ The workflow runs **3 parallel jobs**:
 | `frontend` | TypeScript check → Vite production build → bundle size report |
 | `docker` | Full Docker image build (after backend passes) |
 
-### Required CI Secrets
+> Tests are run with `pytest tests/ -v --tb=short` — failures will fail the build (no silent skipping).
 
-Go to GitHub → Repo Settings → Secrets and Variables → Actions:
+### CI Secrets
+
+Tests use mocks for all external APIs, so no GitHub Actions secrets are required for the default workflow. If you enable real-API integration tests, you'll need:
 
 | Secret | Value |
 |--------|-------|
-| `GOOGLE_API_KEY` | Your Gemini API key (for integration tests, if enabled) |
-| `STRIPE_SECRET_KEY` | Stripe test-mode secret key |
-
-> No secrets are required for unit tests — all external APIs are mocked.
+| `GOOGLE_API_KEY` | Your Gemini API key |
 
 ---
 
@@ -198,17 +179,13 @@ Run through this after every deployment:
 
 - [ ] Backend `/health` returns 200
 - [ ] Frontend loads at Vercel URL
-- [ ] **Register** a new user → verify JWT tokens returned
+- [ ] **Register** a new user → verify JWT tokens returned and email present in token payload
 - [ ] **Upload** a PDF document → returns 202
 - [ ] **Watch processing** → WebSocket shows progress stages
 - [ ] **Wait for "Ready!"** status
 - [ ] **Ask a question** about the document → expect answer with source citations
 - [ ] **Verify sources** — answer references `[Source N]` labels
-- [ ] **Check billing** — Free tier badge shows in navbar
-- [ ] **Hit free tier limit** — upload 4th document → expect 429 with upgrade prompt
-- [ ] **Stripe checkout** — click Upgrade, verify redirect to Stripe
-- [ ] **Webhook** — complete test payment, verify user becomes Pro
-- [ ] **Pro user** — upload unlimited documents, unlimited queries
+- [ ] **Hit document limit** — upload more than `FREE_DOC_LIMIT` documents → expect 429 with the limit message
 
 ---
 
@@ -227,21 +204,16 @@ Run through this after every deployment:
 │  ├── Auth        │     ┌──────────────┐
 │  ├── Documents   │────►│  Supabase    │
 │  ├── RAG/Query   │     │  (Postgres + │
-│  ├── Billing     │     │   Storage)   │
-│  └── WebSocket   │     └──────────────┘
-│                  │
+│  └── WebSocket   │     │   Storage)   │
+│                  │     └──────────────┘
 │  ├── FAISS       │     ┌──────────────┐
 │  └── Redis ──────│────►│ Render Redis │
 │      (cache +    │     │ (pub/sub)    │
 │       pub/sub)   │     └──────────────┘
 └──────────────────┘
          │                ┌──────────────┐
-         ├───────────────►│  Google AI   │
-         │  Gemini API    │  (free tier) │
-         │                └──────────────┘
-         │                ┌──────────────┐
-         └───────────────►│   Stripe     │
-           webhooks       │  (billing)   │
+         └───────────────►│  Google AI   │
+           Gemini API     │  (free tier) │
                           └──────────────┘
 ```
 
@@ -265,11 +237,6 @@ Run through this after every deployment:
 - Check CORS origins include your frontend domain
 - Browser console: look for WebSocket errors
 
-### Stripe webhook failing
-- Check the webhook signing secret matches
-- Verify the webhook URL includes `/api/v1/billing/webhook`
-- Test locally with `stripe listen --forward-to localhost:8000/api/v1/billing/webhook`
-
 ### Gemini API rate limits
 - Free tier: 15 requests per minute, 1,500 per day
 - If you hit limits, wait 60 seconds or upgrade to pay-as-you-go
@@ -285,5 +252,5 @@ Run through this after every deployment:
 |---------|-----|
 | `ValidationError: GOOGLE_API_KEY` | Set `GOOGLE_API_KEY` in Render env vars |
 | `asyncpg.InvalidCatalogNameError` | Check `DATABASE_URL` format — must use `postgresql+asyncpg://` |
-| `Stripe webhook 400` | Ensure `STRIPE_WEBHOOK_SECRET` starts with `whsec_` |
 | `CORS error` | Add frontend domain to `ALLOWED_ORIGINS` |
+| 429 on every upload | `FREE_DOC_LIMIT` reached for the account — increase the env var or set to `0` to disable |

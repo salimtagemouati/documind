@@ -95,16 +95,4 @@ export const analyticsApi = {
   adminStats: () => api.get('/analytics/admin'),
 }
 
-// ─── Billing ──────────────────────────────────────────────────────────────────
-export const billingApi = {
-  /** Create Stripe checkout session → returns { checkout_url } */
-  createCheckout: () => api.post('/billing/checkout'),
-
-  /** Create Stripe customer portal session → returns { portal_url } */
-  createPortal: () => api.post('/billing/portal'),
-
-  /** Get current subscription status, tier, and usage limits */
-  getStatus: () => api.get('/billing/status'),
-}
-
 export default api

@@ -107,7 +107,7 @@ export default function AuthPage({ mode }: { mode: Mode }) {
         </div>
 
         <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.75rem', color: '#374151' }}>
-          RAG · Entity Extraction · Sentiment · Q&A · Powered by GPT-4
+          RAG · Entity Extraction · Sentiment · Q&A · Powered by Google Gemini
         </p>
       </div>
     </div>

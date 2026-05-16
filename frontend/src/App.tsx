@@ -5,7 +5,6 @@ import { useAuthStore } from './store/authStore'
 import LandingPage from './pages/LandingPage'
 import AuthPage from './pages/AuthPage'
 import Dashboard from './pages/Dashboard'
-import BillingPage from './pages/BillingPage'
 
 const qc = new QueryClient({
   defaultOptions: {
@@ -32,7 +31,6 @@ export default function App() {
           <Route path="/login" element={<PublicRoute><AuthPage mode="login" /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><AuthPage mode="register" /></PublicRoute>} />
           <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/billing" element={<PrivateRoute><BillingPage /></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

@@ -131,20 +131,12 @@ const stats = [
 ]
 
 const freePlanFeatures = [
-  'Up to 3 documents',
-  '20 AI queries per day',
+  `Up to ${10} documents`,
+  'Unlimited AI queries',
   'PDF, DOCX, TXT support',
   'Entity extraction',
   'Sentiment analysis',
-]
-
-const proPlanFeatures = [
-  'Unlimited documents',
-  'Unlimited AI queries',
-  'Priority processing',
-  'Advanced analytics',
-  'API access',
-  'Email support',
+  'RAG Q&A',
 ]
 
 /* ─── Intersection Observer Hook ─── */
@@ -346,15 +338,15 @@ export default function LandingPage() {
                 <span className="section-label-line" />
                 Pricing
               </div>
-              <h2 className="section-title">Simple, Transparent Pricing</h2>
+              <h2 className="section-title">Free While in Beta</h2>
               <p className="section-subtitle">
-                Start free. Upgrade when you need more power.
+                No payments, no credit card. Just sign up and start analyzing documents.
               </p>
             </div>
           </RevealSection>
 
           <RevealSection>
-            <div className="pricing-grid">
+            <div className="pricing-grid" style={{ justifyContent: 'center' }}>
               {/* Free Tier */}
               <div className="pricing-card" id="pricing-free">
                 <div className="pricing-name">Free</div>
@@ -362,7 +354,7 @@ export default function LandingPage() {
                   <span className="pricing-amount">$0</span>
                   <span className="pricing-period">/ month</span>
                 </div>
-                <p className="pricing-desc">Perfect for trying out document intelligence.</p>
+                <p className="pricing-desc">Everything you need to try DocuMind today.</p>
                 <ul className="pricing-features">
                   {freePlanFeatures.map((feat, i) => (
                     <li key={i}>
@@ -371,30 +363,8 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <Link to="/register" className="btn btn-secondary btn-pricing" id="pricing-free-cta">
+                <Link to="/register" className="btn btn-primary btn-pricing" id="pricing-free-cta">
                   Get Started Free
-                </Link>
-              </div>
-
-              {/* Pro Tier */}
-              <div className="pricing-card pricing-card--pro" id="pricing-pro">
-                <div className="pricing-popular">Most Popular</div>
-                <div className="pricing-name">Pro</div>
-                <div className="pricing-price">
-                  <span className="pricing-amount">$12</span>
-                  <span className="pricing-period">/ month</span>
-                </div>
-                <p className="pricing-desc">For professionals who need unlimited power.</p>
-                <ul className="pricing-features">
-                  {proPlanFeatures.map((feat, i) => (
-                    <li key={i}>
-                      <span className="pricing-check pricing-check--pro"><IconCheck /></span>
-                      {feat}
-                    </li>
-                  ))}
-                </ul>
-                <Link to="/register" className="btn btn-primary btn-pricing" id="pricing-pro-cta">
-                  Start Pro Trial
                   <IconArrowRight />
                 </Link>
               </div>

@@ -8,7 +8,9 @@ GET  /api/v1/documents/{id}/analysis — get full AI analysis
 DELETE /api/v1/documents/{id}     — delete document + cleanup
 """
 import asyncio
+import re
 import uuid
+from pathlib import PurePosixPath
 from uuid import UUID
 
 from fastapi import (
@@ -48,12 +50,45 @@ from app.services.cache_service import (
 )
 from app.services.document_processor import chunk_text, extract_text, validate_file
 from app.services.progress_service import publish_progress
+from app.services.quota_service import check_document_limit
 from app.services.rag_service import build_document_index, delete_document_index
-from app.services.stripe_service import check_document_limit
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 settings = get_settings()
 logger = get_logger(__name__)
+
+
+# ─── Filename sanitization ────────────────────────────────────────────────────
+_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _safe_filename(raw: str | None, fallback_ext: str = "bin") -> str:
+    """
+    Strict sanitizer for user-supplied filenames.
+
+    - Strips any directory components (defends against `../` and `\\` traversal)
+    - Replaces control / non-ASCII / unsafe chars with `_`
+    - Strips leading dots (no `.htaccess`-style hidden files)
+    - Caps length at 200 chars
+    - Falls back to `unnamed.<ext>` if the result is empty
+
+    The output is safe to embed in a filesystem path or storage key; it should
+    NEVER be used to overwrite a real filename — pair with a uuid in the path.
+    """
+    if not raw:
+        return f"unnamed.{fallback_ext}"
+
+    # Take only the basename — defends against "../../etc/passwd" and "\\foo"
+    base = PurePosixPath(raw.replace("\\", "/")).name
+
+    # Strip control chars + collapse anything outside the safe set
+    cleaned = _SAFE_FILENAME_RE.sub("_", base).lstrip(".").strip("_")
+
+    if not cleaned:
+        return f"unnamed.{fallback_ext}"
+
+    # Cap length — most filesystems allow 255, but storage providers vary
+    return cleaned[:200]
 
 
 # ─── Background processing pipeline ──────────────────────────────────────────
@@ -193,25 +228,32 @@ async def upload_document(
     Connect via WebSocket at /api/v1/ws/documents/{id} for real-time progress.
     """
     file_bytes = await file.read()
-    file_type = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    raw_filename = file.filename or ""
+    file_type = raw_filename.rsplit(".", 1)[-1].lower() if "." in raw_filename else ""
 
-    # Validate before storing
+    # Validate before storing (uses the raw filename for ext detection only — no path use)
     try:
-        validate_file(file.filename, len(file_bytes), file_type)
+        validate_file(raw_filename, len(file_bytes), file_type)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
     from uuid import UUID as UUIDType
     user_id = UUIDType(current_user["sub"])
 
-    # ── Tier enforcement: check document limit ────────────────────────
+    # ── Document limit enforcement ────────────────────────────────────
     try:
         await check_document_limit(str(user_id), db)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
+    # Sanitize the filename used for both display + storage path.
+    # The storage path is built from trusted parts only: user_id (UUID),
+    # a fresh UUID, and the sanitized filename. This makes path traversal
+    # via `file.filename` ("../foo") impossible.
+    safe_name = _safe_filename(raw_filename, fallback_ext=file_type or "bin")
+    storage_path = f"{user_id}/{uuid.uuid4()}/{safe_name}"
+
     # Upload to Supabase Storage
-    storage_path = f"{user_id}/{uuid.uuid4()}/{file.filename}"
     try:
         supabase = get_supabase_admin()
         supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
@@ -223,11 +265,12 @@ async def upload_document(
         logger.error("storage_upload_failed", error=str(e))
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="File upload failed")
 
-    # Create DB record
+    # Create DB record. We persist the sanitized filename for original_filename
+    # so it's safe to interpolate into LLM prompts, logs, etc.
     doc = Document(
         user_id=user_id,
-        filename=storage_path.rsplit("/", 1)[-1],
-        original_filename=file.filename,
+        filename=safe_name,
+        original_filename=safe_name,
         file_type=file_type,
         file_size_bytes=len(file_bytes),
         storage_path=storage_path,
@@ -240,7 +283,7 @@ async def upload_document(
     from app.db.database import AsyncSessionLocal
     background_tasks.add_task(process_document_pipeline, doc.id, file_bytes, AsyncSessionLocal)
 
-    logger.info("document_uploaded", document_id=str(doc.id), filename=file.filename)
+    logger.info("document_uploaded", document_id=str(doc.id), filename=safe_name)
     return DocumentUploadResponse(
         id=doc.id,
         filename=doc.original_filename,

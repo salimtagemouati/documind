@@ -16,7 +16,7 @@ Events follow this schema:
 """
 import asyncio
 import json
-from typing import AsyncGenerator, Dict
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -25,11 +25,14 @@ settings = get_settings()
 logger = get_logger(__name__)
 
 # ─── Redis pub/sub ────────────────────────────────────────────────────────────
-_redis_pubsub = None
+# Single shared connection used for publishing events. Each subscriber gets
+# its own pubsub object derived from this client (Redis pubsub state cannot
+# be multiplexed across listeners).
+_redis: Optional[Any] = None
 _use_redis = bool(settings.REDIS_URL)
 
-# In-memory fallback: document_id → asyncio.Queue
-_memory_channels: Dict[str, list] = {}  # document_id → list of asyncio.Queue
+# In-memory fallback: document_id → list of asyncio.Queue
+_memory_channels: Dict[str, list] = {}
 
 
 def _channel_name(document_id: str) -> str:
@@ -37,19 +40,28 @@ def _channel_name(document_id: str) -> str:
 
 
 async def _get_redis():
-    """Get a dedicated Redis connection for pub/sub (separate from cache)."""
+    """
+    Lazily create — and cache — a single Redis connection for the process.
+
+    Mirrors the pattern in cache_service so we don't open a new TCP
+    connection on every publish/subscribe call.
+    """
+    global _redis
     if not _use_redis:
         return None
-    try:
-        import redis.asyncio as aioredis
-        return aioredis.from_url(
-            settings.REDIS_URL,
-            encoding="utf-8",
-            decode_responses=True,
-        )
-    except Exception as e:
-        logger.warning("redis_pubsub_unavailable", error=str(e))
-        return None
+    if _redis is None:
+        try:
+            import redis.asyncio as aioredis
+            _redis = aioredis.from_url(
+                settings.REDIS_URL,
+                encoding="utf-8",
+                decode_responses=True,
+                max_connections=20,
+            )
+        except Exception as e:
+            logger.warning("redis_pubsub_unavailable", error=str(e))
+            return None
+    return _redis
 
 
 async def publish_progress(
@@ -71,13 +83,12 @@ async def publish_progress(
 
     channel = _channel_name(document_id)
 
-    # Try Redis first
+    # Try Redis first (single shared connection — no per-call TCP setup).
     if _use_redis:
         try:
             r = await _get_redis()
             if r:
                 await r.publish(channel, event)
-                await r.close()
                 return
         except Exception as e:
             logger.warning("redis_publish_failed", error=str(e))
@@ -96,6 +107,10 @@ async def subscribe_progress(document_id: str) -> AsyncGenerator[str, None]:
     Subscribe to progress events for a document.
     Yields JSON strings as they arrive.
     Used by the WebSocket handler.
+
+    Each subscriber creates its own PubSub object from the shared client
+    — pubsub objects can't be safely shared across listeners — but they
+    reuse the underlying connection pool.
     """
     channel = _channel_name(document_id)
 
@@ -118,9 +133,13 @@ async def subscribe_progress(document_id: str) -> AsyncGenerator[str, None]:
                             except (json.JSONDecodeError, KeyError):
                                 pass
                 finally:
-                    await pubsub.unsubscribe(channel)
-                    await pubsub.close()
-                    await r.close()
+                    try:
+                        await pubsub.unsubscribe(channel)
+                    finally:
+                        await pubsub.close()
+                    # NOTE: we deliberately do NOT close `r` here — it's the
+                    # shared module-level client and other publishers/
+                    # subscribers may still need it.
                 return
         except Exception as e:
             logger.warning("redis_subscribe_failed", error=str(e))
@@ -151,3 +170,14 @@ async def subscribe_progress(document_id: str) -> AsyncGenerator[str, None]:
             _memory_channels[document_id].remove(queue)
             if not _memory_channels[document_id]:
                 del _memory_channels[document_id]
+
+
+async def close_progress_redis() -> None:
+    """Dispose the shared Redis connection. Call on app shutdown if desired."""
+    global _redis
+    if _redis is not None:
+        try:
+            await _redis.close()
+        except Exception:
+            pass
+        _redis = None

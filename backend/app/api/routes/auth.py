@@ -51,7 +51,10 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     db.add(user)
     await db.flush()  # Get the generated ID before commit
 
-    access_token = create_access_token(str(user.id), extra={"role": user.role.value})
+    access_token = create_access_token(
+        str(user.id),
+        extra={"role": user.role.value, "email": user.email},
+    )
     refresh_token = create_refresh_token(str(user.id))
 
     logger.info("user_registered", user_id=str(user.id), email=user.email)
@@ -81,7 +84,10 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Account is deactivated. Contact support.",
         )
 
-    access_token = create_access_token(str(user.id), extra={"role": user.role.value})
+    access_token = create_access_token(
+        str(user.id),
+        extra={"role": user.role.value, "email": user.email},
+    )
     refresh_token = create_refresh_token(str(user.id))
 
     logger.info("user_logged_in", user_id=str(user.id))
@@ -105,7 +111,10 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    access_token = create_access_token(str(user.id), extra={"role": user.role.value})
+    access_token = create_access_token(
+        str(user.id),
+        extra={"role": user.role.value, "email": user.email},
+    )
     new_refresh = create_refresh_token(str(user.id))
 
     return TokenResponse(access_token=access_token, refresh_token=new_refresh, expires_in=60 * 60)
