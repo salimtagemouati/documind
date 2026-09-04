@@ -105,7 +105,8 @@ def mock_gemini():
 def mock_supabase():
     """Mock Supabase storage calls."""
     with patch("app.db.database.get_supabase") as mock_get_supabase, \
-         patch("app.db.database.get_supabase_admin") as mock_get_admin:
+         patch("app.db.database.get_supabase_admin") as mock_get_admin, \
+         patch("app.api.routes.documents.get_supabase_admin") as mock_docs_get_admin:
         
         mock_client = MagicMock()
         mock_admin = MagicMock()
@@ -116,6 +117,7 @@ def mock_supabase():
         
         mock_get_supabase.return_value = mock_client
         mock_get_admin.return_value = mock_admin
+        mock_docs_get_admin.return_value = mock_admin
         
         yield {
             "client": mock_client,

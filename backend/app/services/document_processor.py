@@ -10,7 +10,7 @@ Chunking strategy:
 import io
 import re
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import tiktoken
 from docx import Document as DocxDocument
@@ -22,8 +22,21 @@ from app.core.logging import get_logger
 settings = get_settings()
 logger = get_logger(__name__)
 
-# Use the embedding model's tokenizer for accurate counts
-_tokenizer = tiktoken.get_encoding("cl100k_base")
+_tokenizer: Optional[tiktoken.Encoding] = None
+_tokenizer_unavailable = False
+
+
+def _get_tokenizer() -> Optional[tiktoken.Encoding]:
+    """Lazily initialize tokenizer to avoid network dependency at import time."""
+    global _tokenizer, _tokenizer_unavailable
+    if _tokenizer is not None or _tokenizer_unavailable:
+        return _tokenizer
+    try:
+        _tokenizer = tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        _tokenizer_unavailable = True
+        logger.warning("tiktoken_unavailable_falling_back_to_word_count")
+    return _tokenizer
 
 
 # ─── Text extraction ──────────────────────────────────────────────────────────
@@ -82,7 +95,11 @@ def extract_text(file_bytes: bytes, file_type: str) -> Tuple[str, int]:
 
 # ─── Chunking ────────────────────────────────────────────────────────────────
 def count_tokens(text: str) -> int:
-    return len(_tokenizer.encode(text))
+    tokenizer = _get_tokenizer()
+    if tokenizer is not None:
+        return len(tokenizer.encode(text))
+    # Fallback approximation: words + punctuation groups
+    return len(re.findall(r"\w+|[^\w\s]", text))
 
 
 def _split_into_sentences(text: str) -> List[str]:

@@ -400,6 +400,7 @@ async def delete_document(
 
     # Delete DB record (cascades to chunks + query history)
     await db.delete(doc)
+    await db.commit()
 
     logger.info("document_deleted", document_id=str(document_id))
     return MessageResponse(message="Document deleted successfully")

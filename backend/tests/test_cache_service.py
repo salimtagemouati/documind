@@ -123,3 +123,18 @@ async def test_invalidate_does_not_affect_other_documents(mock_redis):
 
     assert await get_cached_answer(doc_a, "Q") is None
     assert await get_cached_answer(doc_b, "Q") is not None
+
+
+@pytest.mark.asyncio
+async def test_invalidate_document_cache_handles_redis_connection_errors(monkeypatch):
+    import app.services.cache_service as cache
+    from app.services.cache_service import invalidate_document_cache
+
+    class BrokenRedis:
+        async def keys(self, pattern):
+            raise RuntimeError("redis down")
+
+    monkeypatch.setattr(cache, "_use_redis", True)
+    monkeypatch.setattr(cache, "_redis", BrokenRedis())
+
+    await invalidate_document_cache("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")

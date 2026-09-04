@@ -3,6 +3,7 @@ Tests for document processing service.
 Run: pytest tests/ -v
 """
 import pytest
+from app.services import document_processor
 from app.services.document_processor import chunk_text, count_tokens, extract_text_from_txt
 
 
@@ -66,3 +67,14 @@ def test_single_short_sentence():
     chunks = chunk_text("Hello world.", chunk_size=100, chunk_overlap=20)
     assert len(chunks) == 1
     assert "Hello world" in chunks[0]["content"]
+
+
+def test_count_tokens_falls_back_when_tiktoken_unavailable(monkeypatch):
+    monkeypatch.setattr(document_processor, "_tokenizer", None)
+    monkeypatch.setattr(document_processor, "_tokenizer_unavailable", False)
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("tokenizer unavailable")
+
+    monkeypatch.setattr(document_processor.tiktoken, "get_encoding", _raise)
+    assert count_tokens("Hello, world!") == 4

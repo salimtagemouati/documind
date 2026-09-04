@@ -117,12 +117,19 @@ async def invalidate_document_cache(document_id: str) -> None:
     """Delete all cache entries related to a document."""
     r = await get_redis()
     if r:
-        # Matches documind:{any-prefix}:{document_id}:{any-digest}
-        pattern = f"documind:*:{document_id}:*"
-        keys = await r.keys(pattern)
-        if keys:
-            await r.delete(*keys)
-            logger.info("cache_invalidated", document_id=document_id, keys=len(keys))
+        try:
+            # Matches documind:{any-prefix}:{document_id}:{any-digest}
+            pattern = f"documind:*:{document_id}:*"
+            keys = await r.keys(pattern)
+            if keys:
+                await r.delete(*keys)
+                logger.info("cache_invalidated", document_id=document_id, keys=len(keys))
+        except Exception as e:
+            logger.warning(
+                "cache_invalidation_failed_redis_unavailable",
+                document_id=document_id,
+                error=str(e),
+            )
     else:
         to_delete = [k for k in _memory_cache if f":{document_id}:" in k]
         for k in to_delete:
