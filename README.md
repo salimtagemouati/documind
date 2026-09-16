@@ -251,7 +251,7 @@ Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
 
 ## 👤 Author
 
-**Salim Taghzouti** — Full-Stack AI Engineer
+**Salim Tagemouati** — Full-Stack AI Engineer
 
 [![GitHub](https://img.shields.io/badge/GitHub-@SalimTag-181717?logo=github)](https://github.com/SalimTag)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?logo=linkedin)](https://linkedin.com/in/salim)
