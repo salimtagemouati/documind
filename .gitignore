@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+venv/
+.venv/
+env/
+*.egg
+
+# Env files — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# Data — too large for git
+backend/data/
+*.faiss
+*.meta
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Logs
+*.log
+logs/
+
+# Evaluation Cache
+.eval_cache/
+backend/.eval_cache/
+
