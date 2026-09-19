@@ -1,289 +1,118 @@
-# DocuMind — Deployment Guide
+# Deploy DocuMind on Google Cloud Run
 
-> Production deployment on **Render** (backend + Redis) + **Vercel** (frontend).
-> AI powered by **Google Gemini 1.5 Flash** (free tier — $0 operating cost).
+Target architecture: Vercel frontend, Cloud Run FastAPI backend, Supabase PostgreSQL/storage, and an external Redis service. Cloud Run replaces the previous Render backend.
 
----
+Official references:
 
-## Prerequisites
+- [Deploy a FastAPI service](https://cloud.google.com/run/docs/quickstarts/build-and-deploy/deploy-python-fastapi-service)
+- [Configure Secret Manager secrets](https://cloud.google.com/run/docs/configuring/services/secrets)
+- [Cloud Run WebSockets](https://cloud.google.com/run/docs/triggering/websockets)
+- [Minimum instances](https://cloud.google.com/run/docs/configuring/min-instances)
 
-- [x] GitHub repository with DocuMind code pushed
-- [x] Supabase project created (PostgreSQL + Storage)
-- [x] Google AI Studio API key (free) → [aistudio.google.com](https://aistudio.google.com/app/apikey)
-- [x] Stripe account (for billing)
-- [ ] Render account → [render.com](https://render.com)
-- [ ] Vercel account → [vercel.com](https://vercel.com)
+## 1. Prerequisites
 
----
+- Google Cloud CLI installed and authenticated.
+- A Google Cloud project with billing enabled.
+- Supabase migrations applied, including the 768-dimensional pgvector migration and HNSW index.
+- `backend/.env` present locally and ignored by Git.
+- A production Redis URL. Cloud Run can start without Redis, but cache and cross-instance WebSocket pub/sub degrade.
+- A dedicated Cloud Run service account.
 
-## 1. Database Setup (Supabase)
-
-Run the migration scripts in your Supabase SQL editor:
-
-```sql
--- Step 1: Initial schema
--- Copy contents of scripts/001_init_schema.sql
-
--- Step 2: Billing columns (Phase 3)
--- Copy contents of backend/migrations/002_add_billing.sql
-```
-
-Create a storage bucket:
-1. Go to **Storage** → **New Bucket**
-2. Name: `documents`
-3. Public: **No** (files are accessed via signed URLs)
-
----
-
-## 2. Google Gemini API Key
-
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Click **Create API Key**
-3. Copy the key (starts with `AIzaSy...`)
-4. Set as `GOOGLE_API_KEY` environment variable
-
-> **Cost: $0** — Gemini 1.5 Flash free tier includes:
-> - 15 RPM, 1M TPM, 1,500 RPD for chat
-> - Embedding API has generous free limits
-> - No credit card required
-
----
-
-## 3. Backend — Render
-
-### Option A: Blueprint (Recommended)
-
-1. Go to [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint**
-2. Connect your GitHub repo
-3. Point to `infra/render.yaml`
-4. Render will create:
-   - `documind-api` (Web Service, Docker)
-   - `documind-redis` (Redis instance)
-5. Fill in the environment variables marked `sync: false`:
-
-| Variable | Where to get it |
-|----------|----------------|
-| `SUPABASE_URL` | Supabase → Settings → API → URL |
-| `SUPABASE_ANON_KEY` | Supabase → Settings → API → `anon` key |
-| `SUPABASE_SERVICE_KEY` | Supabase → Settings → API → `service_role` key |
-| `DATABASE_URL` | Supabase → Settings → Database → Connection string (URI) |
-| `GOOGLE_API_KEY` | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
-| `STRIPE_SECRET_KEY` | Stripe → Developers → API keys → Secret key |
-| `STRIPE_PUBLISHABLE_KEY` | Stripe → Developers → API keys → Publishable key |
-| `STRIPE_WEBHOOK_SECRET` | See step 3c below |
-| `STRIPE_PRICE_ID_PRO` | See step 3b below |
-| `SENTRY_DSN` | Optional — [sentry.io](https://sentry.io) |
-
-### Option B: Manual
-
-1. **New Web Service** → Docker → Root: `backend`
-2. **New Redis** → Connect to web service via internal URL
-3. Set all env vars from the table above
-
-### 3b. Stripe Product Setup
-
-1. Go to [Stripe Dashboard](https://dashboard.stripe.com) → **Products** → **Add Product**
-2. Name: `DocuMind Pro`
-3. Price: `$12.00/month` (recurring)
-4. Copy the **Price ID** (starts with `price_...`) → set as `STRIPE_PRICE_ID_PRO`
-
-### 3c. Stripe Webhook Setup
-
-1. Go to Stripe → **Developers** → **Webhooks** → **Add endpoint**
-2. URL: `https://documind-api.onrender.com/api/v1/billing/webhook`
-3. Events to listen for:
-   - `checkout.session.completed`
-   - `customer.subscription.updated`
-   - `customer.subscription.deleted`
-   - `invoice.payment_failed`
-4. Copy the **Signing secret** (starts with `whsec_...`) → set as `STRIPE_WEBHOOK_SECRET`
-
-### 3d. Test Stripe Locally
+Create the service account and grant only the permissions it needs:
 
 ```bash
-# Install Stripe CLI
-brew install stripe/stripe-cli/stripe
+gcloud iam service-accounts create documind-runner \
+  --display-name="DocuMind Cloud Run runtime"
 
-# Login
-stripe login
-
-# Forward webhooks to local backend
-stripe listen --forward-to localhost:8000/api/v1/billing/webhook
-
-# In another terminal, trigger test events
-stripe trigger checkout.session.completed
+gcloud projects add-iam-policy-binding "$GOOGLE_CLOUD_PROJECT" \
+  --member="serviceAccount:documind-runner@$GOOGLE_CLOUD_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/secretmanager.secretAccessor"
 ```
 
-### 3e. Verify Backend
+The deployer also needs Cloud Run Admin, Service Account User, Cloud Build permissions, and permission to create Secret Manager versions.
+
+## 2. Prepare local configuration
+
+Copy `backend/.env.example` to `backend/.env` and fill it locally. Required entries include:
+
+- application signing secret;
+- Supabase URL, database URL, anonymous key, and service-role key;
+- Google provider key;
+- frontend origin and URL;
+- production Redis URL;
+- optional billing and monitoring settings.
+
+Do not paste secret values into `gcloud` arguments, CI variables, shell history, or tracked YAML. The deployment script reads `backend/.env` and streams each secret value to Secret Manager over stdin. Secret references, not values, are attached to Cloud Run.
+
+## 3. Validate, then deploy
+
+Choose the Cloud Run region closest to the Supabase database, because database round trips usually dominate API latency. `europe-west1` is only the script default and should be changed when the database is elsewhere.
 
 ```bash
-# Health check
-curl https://documind-api.onrender.com/health
+cd backend
 
-# Expected:
-# {"status":"healthy","app":"DocuMind","version":"1.0.0","environment":"production"}
+.venv/bin/python ../scripts/deploy_cloud_run.py \
+  --project "$GOOGLE_CLOUD_PROJECT" \
+  --region europe-west1 \
+  --service-account "documind-runner@$GOOGLE_CLOUD_PROJECT.iam.gserviceaccount.com"
 ```
 
----
+The first invocation validates configuration and prints a secret-free plan. Add `--apply` only after reviewing it:
 
-## 4. Redis on Render
-
-1. Go to Render Dashboard → **New** → **Redis**
-2. Name: `documind-redis`
-3. Plan: Free tier or Starter
-4. After creation, copy the **Internal Connection String**
-5. Set as `REDIS_URL` on your backend service
-
-> The internal URL format is: `redis://red-xxxxx:6379`
-
----
-
-## 5. Frontend — Vercel
-
-### Deploy
-
-1. Go to [Vercel Dashboard](https://vercel.com/dashboard) → **Add New** → **Project**
-2. Import your GitHub repo
-3. Configure:
-   - **Framework Preset**: Vite
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-
-4. **Environment Variables**:
-
-| Variable | Value |
-|----------|-------|
-| `VITE_API_URL` | `https://documind-api.onrender.com/api/v1` |
-
-5. Click **Deploy**
-
-### Custom Domain (Optional)
-
-1. Vercel → Project Settings → Domains
-2. Add your domain (e.g., `app.documind.com`)
-3. Update `ALLOWED_ORIGINS` on Render to include the new domain
-4. Update `FRONTEND_URL` on Render to the new domain
-
----
-
-## 6. GitHub Actions CI
-
-CI runs automatically on push to `main`/`develop` and on PRs.
-
-The workflow runs **3 parallel jobs**:
-
-| Job | What it does |
-|-----|-------------|
-| `backend` | ruff lint → AST syntax check → pytest (with Redis service) |
-| `frontend` | TypeScript check → Vite production build → bundle size report |
-| `docker` | Full Docker image build (after backend passes) |
-
-### Required CI Secrets
-
-Go to GitHub → Repo Settings → Secrets and Variables → Actions:
-
-| Secret | Value |
-|--------|-------|
-| `GOOGLE_API_KEY` | Your Gemini API key (for integration tests, if enabled) |
-| `STRIPE_SECRET_KEY` | Stripe test-mode secret key |
-
-> No secrets are required for unit tests — all external APIs are mocked.
-
----
-
-## 7. Post-Deploy Smoke Test Checklist
-
-Run through this after every deployment:
-
-- [ ] Backend `/health` returns 200
-- [ ] Frontend loads at Vercel URL
-- [ ] **Register** a new user → verify JWT tokens returned
-- [ ] **Upload** a PDF document → returns 202
-- [ ] **Watch processing** → WebSocket shows progress stages
-- [ ] **Wait for "Ready!"** status
-- [ ] **Ask a question** about the document → expect answer with source citations
-- [ ] **Verify sources** — answer references `[Source N]` labels
-- [ ] **Check billing** — Free tier badge shows in navbar
-- [ ] **Hit free tier limit** — upload 4th document → expect 429 with upgrade prompt
-- [ ] **Stripe checkout** — click Upgrade, verify redirect to Stripe
-- [ ] **Webhook** — complete test payment, verify user becomes Pro
-- [ ] **Pro user** — upload unlimited documents, unlimited queries
-
----
-
-## Architecture Overview
-
-```
-┌──────────────────┐     HTTPS      ┌──────────────────┐
-│   Vercel CDN     │◄──────────────►│     Browser      │
-│   (React SPA)    │                │                  │
-└────────┬─────────┘                └──────────────────┘
-         │ VITE_API_URL                      │
-         ▼                                   │ WebSocket
-┌──────────────────┐                         │
-│  Render          │◄────────────────────────┘
-│  (FastAPI)       │
-│  ├── Auth        │     ┌──────────────┐
-│  ├── Documents   │────►│  Supabase    │
-│  ├── RAG/Query   │     │  (Postgres + │
-│  ├── Billing     │     │   Storage)   │
-│  └── WebSocket   │     └──────────────┘
-│                  │
-│  ├── FAISS       │     ┌──────────────┐
-│  └── Redis ──────│────►│ Render Redis │
-│      (cache +    │     │ (pub/sub)    │
-│       pub/sub)   │     └──────────────┘
-└──────────────────┘
-         │                ┌──────────────┐
-         ├───────────────►│  Google AI   │
-         │  Gemini API    │  (free tier) │
-         │                └──────────────┘
-         │                ┌──────────────┐
-         └───────────────►│   Stripe     │
-           webhooks       │  (billing)   │
-                          └──────────────┘
+```bash
+.venv/bin/python ../scripts/deploy_cloud_run.py \
+  --project "$GOOGLE_CLOUD_PROJECT" \
+  --region europe-west1 \
+  --service-account "documind-runner@$GOOGLE_CLOUD_PROJECT.iam.gserviceaccount.com" \
+  --apply
 ```
 
----
+The deployment uses:
 
-## Troubleshooting
+- one vCPU and 1 GiB memory;
+- one minimum instance to reduce cold-start latency;
+- startup CPU boost;
+- instance-based CPU allocation for processing and WebSocket activity;
+- concurrency 40, maximum 10 instances;
+- 60-minute request timeout and best-effort session affinity for WebSockets;
+- one asynchronous Uvicorn worker per container.
 
-### Backend won't start
-- Check the **Logs** tab on Render
-- Most common: missing env var → check all required vars are set
-- Database URL format must be `postgresql+asyncpg://...`
-- `GOOGLE_API_KEY` must be set (even for basic startup)
+These settings favor responsiveness and reliable background document processing over the lowest possible cost. Tune them using Cloud Run latency, instance, CPU, memory, and billable-time metrics.
 
-### "No FAISS index found" errors after migration
-- On first startup after the OpenAI → Gemini migration, old indexes are automatically purged
-- Documents need to be re-uploaded and re-processed with the new Gemini embeddings
-- This is expected — old 1536d OpenAI embeddings are incompatible with 768d Gemini embeddings
+## 4. Cut over the frontend
 
-### WebSocket not connecting
-- Ensure Render plan supports long-lived connections (Starter+ does)
-- Check CORS origins include your frontend domain
-- Browser console: look for WebSocket errors
+After the Cloud Run health check succeeds, set the Vercel production variable:
 
-### Stripe webhook failing
-- Check the webhook signing secret matches
-- Verify the webhook URL includes `/api/v1/billing/webhook`
-- Test locally with `stripe listen --forward-to localhost:8000/api/v1/billing/webhook`
+```text
+VITE_API_URL=https://YOUR_CLOUD_RUN_HOST/api/v1
+```
 
-### Gemini API rate limits
-- Free tier: 15 requests per minute, 1,500 per day
-- If you hit limits, wait 60 seconds or upgrade to pay-as-you-go
-- Embeddings have separate (generous) limits
+Redeploy the frontend, then update the backend `ALLOWED_ORIGINS` and `FRONTEND_URL` values if the frontend domain changed. Do not remove the Render service until all checks below pass.
 
-### Frontend shows blank page
-- Check `VITE_API_URL` is set correctly in Vercel env vars
-- Check browser console for CORS errors
-- Ensure the Render backend `ALLOWED_ORIGINS` includes your Vercel URL
+## 5. Verify before removing Render
 
-### Common env var issues
-| Symptom | Fix |
-|---------|-----|
-| `ValidationError: GOOGLE_API_KEY` | Set `GOOGLE_API_KEY` in Render env vars |
-| `asyncpg.InvalidCatalogNameError` | Check `DATABASE_URL` format — must use `postgresql+asyncpg://` |
-| `Stripe webhook 400` | Ensure `STRIPE_WEBHOOK_SECRET` starts with `whsec_` |
-| `CORS error` | Add frontend domain to `ALLOWED_ORIGINS` |
+```bash
+gcloud run services describe documind-api \
+  --project "$GOOGLE_CLOUD_PROJECT" \
+  --region europe-west1
+```
+
+Then verify manually:
+
+1. `/health` responds successfully on the Cloud Run URL.
+2. Registration, login, token refresh, and the public demo work.
+3. Uploading a document reaches `ready` and progress reconnects after a forced WebSocket disconnect.
+4. Single- and multi-document questions return grounded citations.
+5. Demo upload, delete, and billing writes remain forbidden; the 11th demo query from one IP is rate-limited.
+6. Stripe webhooks target the new Cloud Run endpoint and pass signature verification.
+7. Vercel uses the Cloud Run API URL and browser CORS succeeds.
+8. Cloud Run logs contain no secret values or raw provider exceptions.
+
+Keep Render available for rollback until production traffic and error rates are stable. The deleted `infra/render.yaml` remains recoverable from Git history.
+
+## Cloud Run caveats
+
+- WebSockets are supported, but each connection is still an HTTP request subject to the configured timeout. The frontend reconnect logic is therefore required.
+- A minimum instance reduces cold starts but adds idle cost.
+- Best-effort session affinity is not a substitute for Redis-backed shared state.
+- The container filesystem is ephemeral; benchmark caches and uploaded documents must not rely on local persistence.

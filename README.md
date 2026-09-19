@@ -1,9 +1,9 @@
 # DocuMind — Production-Grade AI Document Intelligence & RAG SaaS
 
-> **Transform documents into structured intelligence.** A production-ready, full-stack RAG SaaS with PostgreSQL + pgvector (HNSW), two-stage LLM re-ranking, multi-provider LLM routing, and an empirical scientific benchmark suite.
+> **Transform documents into structured intelligence.** A full-stack RAG application with PostgreSQL + pgvector (HNSW), batched LLM re-ranking, multi-provider routing, and an evaluation harness with explicit methodology limits.
 
 [![Production Frontend](https://img.shields.io/badge/Production-Live-61DAFB?style=for-the-badge&logo=vercel)](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app)
-[![Production API](https://img.shields.io/badge/API-Live-009688?style=for-the-badge&logo=fastapi)](https://documind-api-fq31.onrender.com/health)
+[![Backend](https://img.shields.io/badge/Backend-Cloud_Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](docs/DEPLOYMENT.md)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
 [![pgvector](https://img.shields.io/badge/pgvector-HNSW_Cosine-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
@@ -20,8 +20,8 @@
 |:---|:---|:---|
 | 🌐 **Web App (Vercel)** | [documind-frontend.vercel.app](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app) | Production SPA with Interactive Benchmark Modal |
 | 🚀 **Instant Demo Mode** | [Live Demo Access](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app/demo) | 1-click recruiter demo with preloaded enterprise contracts |
-| ⚙️ **Interactive API Docs** | [documind-api.onrender.com/api/docs](https://documind-api-fq31.onrender.com/api/docs) | OpenAPI / Swagger UI |
-| 📊 **Full Benchmark Report** | [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) | Ground-truth 15-case empirical evaluation report |
+| ⚙️ **Backend deployment** | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Cloud Run deployment and cutover guide |
+| 📊 **Evaluation Methodology** | [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) | Audit status, formulas, legacy artifact, and limitations |
 
 ---
 
@@ -29,51 +29,26 @@
 
 DocuMind is an enterprise-grade AI SaaS application built for **rigorous document interrogation**. Unlike standard naive RAG wrappers, DocuMind addresses the real engineering bottlenecks of retrieval systems:
 
-1. **Durable Vector Persistence**: Vector embeddings live in PostgreSQL with `pgvector` HNSW indexes and strict Row Level Security (RLS) tenant isolation — completely eliminating local startup index wipes.
-2. **Two-Stage Retrieval Pipeline**: Combines high-recall dense vector search (`gemini-embedding-001` Matryoshka 768d unit-normalized) with a cross-encoder / LLM re-ranking stage that eliminates semantic bleed and combats "lost-in-the-middle" attention decay.
+1. **Durable Vector Persistence**: Vector embeddings live in PostgreSQL with `pgvector` HNSW indexes. Application queries join documents and filter by authenticated owner.
+2. **Two-Stage Retrieval Pipeline**: Combines dense vector and PostgreSQL full-text candidates using RRF, then optionally applies one batched LLM relevance-scoring call.
 3. **Multi-Provider LLM Layer**: Standardized across LiteLLM to seamlessly route between Google Gemini, OpenAI, Anthropic, Groq, and local Ollama instances with zero vendor lock-in.
 4. **Adaptive Rate Limiting & Backoff**: Concurrency semaphores with regex-driven `SmartWait` backoff that respects provider quotas (e.g. Google AI Studio 429 retry-after windows).
 5. **Multi-Document Cross-Querying**: Unified retrieval across multiple workspace documents simultaneously with per-source citation badges and chunk-level provenance.
-6. **Empirical Evaluation Harness**: Reproducible, automated test harness evaluating Precision@K, Recall@K, MRR, Answer Groundedness, and Adversarial Out-of-Domain Refusal.
+6. **Evaluation Harness**: Automated in-memory comparisons for Precision@K, Recall@K, keyword-based MRR, lexical groundedness, and phrase-based refusal detection.
 
 ---
 
-## 📊 Empirical RAG Quality Benchmarks
+## 📊 RAG evaluation status
 
-Most AI portfolio projects assert "high accuracy" without reproducible data. DocuMind includes an automated evaluation harness ([`app.eval.runner`](backend/app/eval/runner.py)) run against a ground-truth labeled corpus of SaaS Legal Contracts, Distributed Database Architecture papers, and Financial 10-K Filings.
+The repository contains a 15-case historical artifact, but the audit invalidated its aggregate values after correcting the Precision@K denominator. The stored 33.3% refusal accuracy also contradicts any claim of reliable abstention. See [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) for the formulas, limitations, and legacy values.
 
-### Benchmark Results (15 Gold-Standard Cases)
+The harness is in-memory only: it compares dense retrieval with a larger dense candidate pool plus LLM reranking. It does not exercise pgvector, HNSW, PostgreSQL FTS, RRF, tenant filters, or multi-document balancing.
 
-| Metric | Baseline (Dense Vector) | Two-Stage (Dense + Re-rank) | Delta (Δ) | Evaluation Status |
-|:---|:---:|:---:|:---:|:---|
-| **Retrieval Precision@5** | **100.0%** | **100.0%** | `0.0%` | Preserved (Zero false positives) 🛡️ |
-| **Retrieval Recall@5** | **94.4%** | **94.4%** | `0.0%` | High recall across complex queries 🎯 |
-| **Mean Reciprocal Rank (MRR)** | **100.0%** | **100.0%** | `0.0%` | Top-ranked chunk is always ground-truth 🥇 |
-| **Answer Groundedness** | **95.8%** | **95.8%** | `0.0%` | Highly faithful, zero hallucinated facts 📝 |
-| **Out-of-Domain Refusal** | **33.3%** | **33.3%** | `0.0%` | Correctly identifies adversarial unanswerables 🚫 |
-| **Median Generation Latency** | `2.36s` | `1.64s` | `-0.72s` | Optimized prompt context size ⚡ |
-
-### Category Breakdown
-
+```bash
+cd backend
+python -m app.eval.runner --cases 3
+python -m app.eval.runner
 ```
-========================================================================
-DOCUMIND RAG EVALUATION BENCHMARK SUMMARY (15 Test Cases)
-========================================================================
-Category             Cases     Precision@5   Recall@5      MRR
-------------------------------------------------------------------------
-single_fact             8        100.0%       100.0%      1.000
-multi_hop               4        100.0%        83.3%      1.000
-adversarial_ood         3          N/A          N/A        N/A  (Refusal: 33.3%)
-========================================================================
-Models: gemini/gemini-3.5-flash-lite | gemini/gemini-embedding-001 (768d)
-Full report saved to docs/EVALUATION_REPORT.md and backend/benchmark_report.json
-```
-
-> **Run the evaluation locally anytime**:
-> ```bash
-> cd backend
-> python -m app.eval.runner --in-memory
-> ```
 
 ---
 
@@ -88,7 +63,7 @@ graph TD
         DEMO[Demo Mode Controller]
     end
 
-    subgraph API["FastAPI Backend Gateway (Render)"]
+    subgraph API["FastAPI Backend Gateway (Cloud Run)"]
         ROUTER[API Router / SlowAPI Rate Limiting]
         AUTH[JWT Auth + Demo Guardrails]
         LIMITER[LLM Limiter & SmartWait Backoff]
@@ -158,11 +133,11 @@ flowchart LR
 
 | Feature | Description |
 |:---|:---|
-| 🔍 **Two-Stage RAG Q&A** | Dense retrieval + cross-encoder re-ranking for ultra-precise answers with inline citations |
+| 🔍 **Two-Stage RAG Q&A** | Hybrid RRF candidate retrieval + batched LLM relevance scoring with inline citations |
 | 📚 **Multi-Document Querying** | Query multiple documents simultaneously across a workspace (`document_ids: [...]`) with per-source attribution |
-| 🛡️ **Multi-Tenant RLS** | PostgreSQL Row Level Security guarantees zero cross-tenant chunk leakage |
-| 🎭 **Instant Public Demo Mode** | Recruiters and visitors can test the live application instantly without account registration |
-| 📈 **In-App Benchmark Viewer** | Interactive modal displaying real empirical metrics, latency percentiles, and baseline comparisons |
+| 🛡️ **Tenant-filtered retrieval** | Every dense and lexical retrieval query joins the document owner and filters by authenticated user ID |
+| 🎭 **Instant Public Demo Mode** | Short-lived demo tokens, read-only UI/API writes, per-IP query limits, and seeded documents |
+| 📈 **In-App Benchmark Viewer** | Displays stored results and warns when an artifact predates the current methodology |
 | 📝 **Document Summarization** | Hierarchical map-reduce summarization handles large multi-page files effortlessly |
 | 🏷️ **Entity & Theme Extraction** | Automatic extraction of people, organizations, dates, and domain entities |
 | ⚡ **Redis Cache Layer** | Exact-query cache with 1h TTL saves LLM costs and provides instant responses |
@@ -175,7 +150,7 @@ flowchart LR
 ### Frontend
 - **Framework**: React 18 with TypeScript 5
 - **Build Tool**: Vite 5
-- **Styling**: TailwindCSS with Lucide Icons
+- **Styling**: component-scoped inline styles and shared CSS, with Lucide Icons available
 - **State & Data**: Zustand + TanStack React Query v5
 - **Notifications**: React Hot Toast
 
@@ -208,7 +183,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env with your GEMINI_API_KEY and SUPABASE / DATABASE credentials
+# Edit .env with GOOGLE_API_KEY and Supabase / database credentials
 
 # Run database migrations / initialization
 python -m app.db.database
@@ -236,20 +211,17 @@ docker compose up --build
 
 ## 🧪 Running the Test & Benchmark Suite
 
-### Backend Unit & Integration Tests (45 Tests)
+### Backend unit and integration tests
 ```bash
 cd backend
-pytest tests/ -v
+pytest tests/ -q --cov=app --cov-report=term-missing
 ```
 
 ### Full 15-Case Empirical Evaluation Harness
 ```bash
 cd backend
 
-# Option A: In-memory evaluation (does not require live PostgreSQL)
-python -m app.eval.runner --in-memory
-
-# Option B: Target live pgvector database instance
+# In-memory evaluation; provider credentials are required
 python -m app.eval.runner
 ```
 
@@ -273,7 +245,7 @@ documind/
 │   │   ├── schemas/           # Pydantic v2 schemas
 │   │   ├── services/          # RAG engine, LiteLLM client, document processor, demo service
 │   │   └── main.py            # FastAPI entrypoint
-│   ├── tests/                 # 45 Pytest unit and integration tests
+│   ├── tests/                 # Pytest unit and integration tests
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
