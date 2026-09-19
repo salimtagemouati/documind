@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../services/api'
 
 type Mode = 'login' | 'register'
 
@@ -25,9 +26,8 @@ export default function AuthPage({ mode }: { mode: Mode }) {
         toast.success('Account created!')
       }
       navigate('/dashboard')
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || 'Something went wrong'
-      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg))
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Something went wrong'))
     } finally {
       setLoading(false)
     }
@@ -37,7 +37,7 @@ export default function AuthPage({ mode }: { mode: Mode }) {
     <div style={{
       minHeight: '100vh', background: '#0f1117',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: "'Inter', sans-serif", padding: '24px'
+      fontFamily: 'inherit', padding: '24px'
     }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
         {/* Logo */}

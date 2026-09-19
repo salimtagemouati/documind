@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { documentsApi, analyticsApi, billingApi } from '../services/api'
+import { documentsApi, analyticsApi, billingApi, getApiErrorMessage, getApiErrorStatus } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { useMultiDocumentProgress } from '../hooks/useDocumentProgress'
 import UploadZone from '../components/dashboard/UploadZone'
@@ -12,6 +12,7 @@ import EvalModal from '../components/dashboard/EvalModal'
 import StatsBar from '../components/dashboard/StatsBar'
 import UpgradePrompt from '../components/dashboard/UpgradePrompt'
 import toast from 'react-hot-toast'
+import type { DocumentItem } from '../types'
 
 export default function Dashboard() {
   const { user, logout } = useAuthStore()
@@ -44,6 +45,7 @@ export default function Dashboard() {
 
   const documents = docsData?.items || []
   const isPro = billingStatus?.is_pro ?? false
+  const isDemo = user?.is_demo ?? false
 
   // ─── WebSocket progress for all processing documents ───────────────────
   const progressMap = useMultiDocumentProgress(
@@ -63,11 +65,11 @@ export default function Dashboard() {
       toast.success(`"${res.data.filename}" uploaded — processing started`)
       setSelectedDocIds([res.data.id])
     },
-    onError: (err: any) => {
-      if (err?.response?.status === 429) {
+    onError: (error: unknown) => {
+      if (getApiErrorStatus(error) === 429) {
         setUpgradePrompt('documents')
       } else {
-        toast.error(err?.response?.data?.detail || 'Upload failed')
+        toast.error(getApiErrorMessage(error, 'Upload failed'))
       }
     },
   })
@@ -82,7 +84,7 @@ export default function Dashboard() {
     },
   })
 
-  const selectedDocs = documents.filter((d: any) => selectedDocIds.includes(d.id))
+  const selectedDocs = (documents as DocumentItem[]).filter(document => selectedDocIds.includes(document.id))
 
   const handleSelectDoc = (id: string) => {
     setSelectedDocIds([id])
@@ -103,10 +105,10 @@ export default function Dashboard() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f1117', color: '#fff', fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f1117', color: '#fff', fontFamily: 'inherit' }}>
 
       {/* Top navbar */}
-      <nav style={{
+      <nav className="dashboard-nav" style={{
         height: '56px', borderBottom: '1px solid rgba(255,255,255,0.07)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 24px', flexShrink: 0, background: '#0f1117'
@@ -127,10 +129,20 @@ export default function Dashboard() {
             border: `1px solid ${isPro ? 'rgba(139,92,246,0.4)' : 'rgba(99,102,241,0.3)'}`,
             fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em',
           }}>
-            {isPro ? '⚡ PRO' : 'FREE'}
+            {isDemo ? 'DEMO' : isPro ? 'PRO' : 'FREE'}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div className="dashboard-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button
+            type="button"
+            className="dashboard-sidebar-toggle"
+            aria-expanded={sidebarOpen}
+            onClick={() => setSidebarOpen(open => !open)}
+            style={{
+              fontSize: '0.78rem', padding: '8px 10px', borderRadius: '6px', background: 'transparent',
+              border: '1px solid rgba(255,255,255,0.14)', color: '#d1d5db', cursor: 'pointer',
+            }}
+          >Documents</button>
           {/* Scientific RAG Benchmark button */}
           <button
             onClick={() => setShowEval(true)}
@@ -146,18 +158,18 @@ export default function Dashboard() {
             <span>Quality Benchmark</span>
           </button>
 
-          {!isPro && (
+          {!isDemo && !isPro && (
             <button onClick={() => navigate('/billing')} style={{
               fontSize: '0.75rem', padding: '5px 12px', borderRadius: '6px',
               background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
               border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 600,
             }}>Upgrade</button>
           )}
-          <button onClick={() => navigate('/billing')} style={{
+          {!isDemo && <button onClick={() => navigate('/billing')} style={{
             fontSize: '0.8rem', padding: '6px 14px', borderRadius: '6px',
             background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
             color: '#9ca3af', cursor: 'pointer'
-          }}>Billing</button>
+          }}>Billing</button>}
           <span style={{ fontSize: '0.82rem', color: '#6b7280' }}>{user?.email}</span>
           <button onClick={logout} style={{
             fontSize: '0.8rem', padding: '6px 14px', borderRadius: '6px',
@@ -171,20 +183,26 @@ export default function Dashboard() {
       <StatsBar stats={stats} />
 
       {/* Main layout */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="dashboard-main-layout" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
         {/* Sidebar */}
-        <aside style={{
+        <aside className={`dashboard-sidebar ${sidebarOpen ? 'is-open' : ''}`} style={{
           width: sidebarOpen ? '280px' : '0',
           flexShrink: 0,
           borderRight: '1px solid rgba(255,255,255,0.07)',
           display: 'flex', flexDirection: 'column',
-          overflow: 'hidden', transition: 'width 0.2s',
+          overflow: 'hidden',
           background: '#0f1117'
         }}>
-          <div style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <UploadZone onDrop={(file) => uploadMutation.mutate(file)} loading={uploadMutation.isPending} />
-          </div>
+          {isDemo ? (
+            <div style={{ padding: '16px', color: '#c7d2fe', fontSize: '0.78rem', lineHeight: 1.5, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+              Public demo: seeded documents are read-only and queries are rate-limited.
+            </div>
+          ) : (
+            <div style={{ padding: '16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+              <UploadZone onDrop={(file) => uploadMutation.mutate(file)} loading={uploadMutation.isPending} />
+            </div>
+          )}
           <div style={{ flex: 1, overflow: 'auto' }}>
             <DocumentList
               documents={documents}
@@ -193,6 +211,7 @@ export default function Dashboard() {
               onSelect={handleSelectDoc}
               onToggleSelect={handleToggleSelect}
               onDelete={(id) => deleteMutation.mutate(id)}
+              readOnly={isDemo}
               progressMap={progressMap}
             />
           </div>

@@ -207,7 +207,6 @@ export default function LandingPage() {
           <div className="hero-orb hero-orb--indigo" />
           <div className="hero-orb hero-orb--violet" />
           <div className="hero-orb hero-orb--cyan" />
-          <div className="hero-grid" />
         </div>
 
         <div className="hero-content">

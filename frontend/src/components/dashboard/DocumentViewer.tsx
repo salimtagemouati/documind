@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { documentsApi, queryApi } from '../../services/api'
+import { useQuery } from '@tanstack/react-query'
+import { documentsApi, getApiErrorMessage, queryApi } from '../../services/api'
 import toast from 'react-hot-toast'
+import type { DocumentAnalysis, DocumentItem, QueryAnswer, QueryHistoryItem } from '../../types'
 
 interface Props {
-  doc: any
+  doc: DocumentItem
 }
 
 type Tab = 'overview' | 'entities' | 'qa' | 'history'
@@ -12,7 +13,7 @@ type Tab = 'overview' | 'entities' | 'qa' | 'history'
 export default function DocumentViewer({ doc }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [question, setQuestion] = useState('')
-  const [answers, setAnswers] = useState<any[]>([])
+  const [answers, setAnswers] = useState<QueryAnswer[]>([])
   const [asking, setAsking] = useState(false)
 
   const isReady = doc.status === 'ready'
@@ -34,8 +35,8 @@ export default function DocumentViewer({ doc }: Props) {
     try {
       const { data } = await queryApi.ask(doc.id, q)
       setAnswers(prev => [data, ...prev])
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Query failed')
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Query failed'))
     } finally {
       setAsking(false)
     }
@@ -114,10 +115,11 @@ export default function DocumentViewer({ doc }: Props) {
 }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
-function OverviewTab({ analysis, loading }: { analysis: any, loading: boolean }) {
+function OverviewTab({ analysis, loading }: { analysis?: DocumentAnalysis, loading: boolean }) {
   if (loading) return <Skeleton />
   if (!analysis) return null
   const s = analysis.sentiment
+  const keywords = analysis.keywords ?? []
 
   return (
     <div style={{ maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -129,10 +131,10 @@ function OverviewTab({ analysis, loading }: { analysis: any, loading: boolean })
       )}
 
       {/* Keywords */}
-      {analysis.keywords?.length > 0 && (
+      {keywords.length > 0 && (
         <Card title="Keywords">
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {analysis.keywords.map((k: string) => (
+            {keywords.map((k: string) => (
               <span key={k} style={{
                 padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem',
                 fontFamily: 'monospace', background: 'rgba(99,102,241,0.12)',
@@ -161,7 +163,11 @@ function OverviewTab({ analysis, loading }: { analysis: any, loading: boolean })
             </div>
           </div>
           <div style={{ marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${s.score * 100}%`, background: sentimentColor(s.label), borderRadius: '3px', transition: 'width 0.8s ease' }} />
+            <div style={{
+              height: '100%', width: '100%', background: sentimentColor(s.label), borderRadius: '3px',
+              transform: `scaleX(${Math.min(1, Math.max(0, s.score))})`,
+              transformOrigin: 'left center', transition: 'transform 0.8s ease-out',
+            }} />
           </div>
         </Card>
       )}
@@ -170,7 +176,7 @@ function OverviewTab({ analysis, loading }: { analysis: any, loading: boolean })
 }
 
 // ─── Entities Tab ─────────────────────────────────────────────────────────────
-function EntitiesTab({ analysis, loading }: { analysis: any, loading: boolean }) {
+function EntitiesTab({ analysis, loading }: { analysis?: DocumentAnalysis, loading: boolean }) {
   if (loading) return <Skeleton />
   if (!analysis?.entities) return <div style={{ color: '#6b7280' }}>No entities found.</div>
 
@@ -188,7 +194,7 @@ function EntitiesTab({ analysis, loading }: { analysis: any, loading: boolean })
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px', maxWidth: '900px' }}>
       {categories.map(({ key, label, color }) => {
-        const items: string[] = e[key] || []
+        const items = e[key] || []
         if (!items.length) return null
         return (
           <Card key={key} title={label}>
@@ -209,11 +215,21 @@ function EntitiesTab({ analysis, loading }: { analysis: any, loading: boolean })
 }
 
 // ─── Q&A Tab ──────────────────────────────────────────────────────────────────
-function QATab({ question, setQuestion, onAsk, asking, answers, docReady }: any) {
+interface QATabProps {
+  question: string
+  setQuestion: (value: string) => void
+  onAsk: () => void
+  asking: boolean
+  answers: QueryAnswer[]
+  docReady: boolean
+}
+
+function QATab({ question, setQuestion, onAsk, asking, answers, docReady }: QATabProps) {
   return (
     <div style={{ maxWidth: '760px' }}>
       <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
         <input
+          aria-label="Question about this document"
           value={question}
           onChange={e => setQuestion(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && onAsk()}
@@ -245,16 +261,16 @@ function QATab({ question, setQuestion, onAsk, asking, answers, docReady }: any)
         </div>
       )}
 
-      {answers.map((a: any, i: number) => (
+      {answers.map((a, i) => (
         <div key={i} style={{ marginBottom: '20px', animation: 'fadeIn 0.3s ease' }}>
           <Card title={`Q: ${a.question}`}>
             <p style={{ fontSize: '0.9rem', lineHeight: 1.7, color: '#d1d5db', margin: '0 0 16px' }}>{a.answer}</p>
             {a.sources?.length > 0 && (
               <div>
                 <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#4b5563', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  Sources used ({a.sources.length} chunks · similarity ≥ {Math.min(...a.sources.map((s: any) => s.similarity_score)).toFixed(2)})
+                  Sources used ({a.sources.length} chunks · similarity ≥ {Math.min(...a.sources.map(s => s.similarity_score)).toFixed(2)})
                 </div>
-                {a.sources.slice(0, 3).map((s: any, j: number) => (
+                {a.sources.slice(0, 3).map((s, j) => (
                   <div key={j} style={{
                     padding: '8px 12px', marginBottom: '6px', borderRadius: '6px',
                     background: 'rgba(255,255,255,0.03)', borderLeft: '2px solid rgba(99,102,241,0.4)',
@@ -286,12 +302,12 @@ function HistoryTab({ docId }: { docId: string }) {
   })
 
   if (isLoading) return <Skeleton />
-  const items = data?.items || []
+  const items: QueryHistoryItem[] = data?.items || []
   if (!items.length) return <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>No queries yet for this document.</div>
 
   return (
     <div style={{ maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      {items.map((q: any) => (
+      {items.map(q => (
         <div key={q.id} style={{
           padding: '12px 16px', borderRadius: '8px',
           background: '#1a1d27', border: '1px solid rgba(255,255,255,0.07)'
@@ -338,7 +354,7 @@ function StatusPill({ status }: { status: string }) {
   )
 }
 
-function Meta({ label, value }: { label: string; value: any }) {
+function Meta({ label, value }: { label: string; value: string | number }) {
   return (
     <span style={{ fontSize: '0.7rem', color: '#4b5563', fontFamily: 'monospace' }}>
       {label}: <span style={{ color: '#9ca3af' }}>{value}</span>

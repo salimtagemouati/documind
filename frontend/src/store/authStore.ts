@@ -10,6 +10,7 @@ interface User {
   documents_processed: number
   queries_made: number
   ai_tokens_used: number
+  is_demo: boolean
 }
 
 interface AuthState {

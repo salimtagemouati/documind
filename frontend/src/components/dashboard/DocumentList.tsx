@@ -20,6 +20,7 @@ interface Props {
   onToggleSelect?: (id: string) => void
   onDelete: (id: string) => void
   progressMap?: Record<string, ProgressEvent>
+  readOnly?: boolean
 }
 
 const statusColor: Record<string, string> = {
@@ -59,7 +60,8 @@ export default function DocumentList({
   onSelect,
   onToggleSelect,
   onDelete,
-  progressMap = {}
+  progressMap = {},
+  readOnly = false,
 }: Props) {
   if (loading) {
     return (
@@ -196,11 +198,13 @@ export default function DocumentList({
                       {/* Progress bar fill */}
                       <div
                         style={{
-                          width: `${progress.progress}%`,
+                          width: '100%',
                           height: '100%',
                           background: `linear-gradient(90deg, ${stageColors[progress.stage] || '#6366f1'}, ${stageColors[progress.stage] || '#8b5cf6'}88)`,
                           borderRadius: '2px',
-                          transition: 'width 0.5s ease-out',
+                          transform: `scaleX(${Math.min(100, Math.max(0, progress.progress)) / 100})`,
+                          transformOrigin: 'left center',
+                          transition: 'transform 0.5s ease-out',
                           position: 'relative',
                         }}
                       >
@@ -236,7 +240,7 @@ export default function DocumentList({
                   </div>
                 )}
               </div>
-              <button
+              {!readOnly && <button
                 onClick={e => { e.stopPropagation(); onDelete(doc.id) }}
                 style={{
                   background: 'transparent', border: 'none', color: '#4b5563',
@@ -244,7 +248,7 @@ export default function DocumentList({
                   flexShrink: 0,
                 }}
                 title="Delete"
-              >✕</button>
+              >✕</button>}
             </div>
           </div>
         )

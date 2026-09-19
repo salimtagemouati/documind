@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../services/api'
 
 export default function DemoPage() {
   const { loginAsDemo } = useAuthStore()
@@ -17,10 +18,9 @@ export default function DemoPage() {
           toast.success('Welcome to DocuMind Public Demo!')
           navigate('/dashboard', { replace: true })
         }
-      } catch (err: any) {
+      } catch (caught: unknown) {
         if (mounted) {
-          const msg = err?.response?.data?.detail || 'Failed to initialize demo session'
-          setError(typeof msg === 'string' ? msg : JSON.stringify(msg))
+          setError(getApiErrorMessage(caught, 'Failed to initialize demo session'))
           toast.error('Could not connect to demo. Please try again.')
         }
       }
@@ -38,7 +38,7 @@ export default function DemoPage() {
       alignItems: 'center',
       justifyContent: 'center',
       color: '#fff',
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: 'inherit',
       padding: '24px'
     }}>
       <div style={{

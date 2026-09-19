@@ -38,6 +38,7 @@ export function useDocumentProgress({
   const wsRef = useRef<WebSocket | null>(null)
   const retryCountRef = useRef(0)
   const retryTimerRef = useRef<number | null>(null)
+  const connectRef = useRef<() => void>(() => undefined)
   const maxRetries = 3
 
   const connect = useCallback(() => {
@@ -95,7 +96,7 @@ export function useDocumentProgress({
         if (retryCountRef.current < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 5000)
           retryCountRef.current += 1
-          retryTimerRef.current = window.setTimeout(connect, delay)
+          retryTimerRef.current = window.setTimeout(() => connectRef.current(), delay)
         }
       }
 
@@ -106,6 +107,10 @@ export function useDocumentProgress({
       // WebSocket constructor can throw in some environments
     }
   }, [documentId, enabled, onComplete, onError])
+
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
   useEffect(() => {
     connect()

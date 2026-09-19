@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { billingApi } from '../services/api'
+import { billingApi, getApiErrorMessage } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useEffect } from 'react'
@@ -40,8 +40,8 @@ export default function BillingPage() {
     onSuccess: (res) => {
       window.location.href = res.data.checkout_url
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.detail || 'Unable to start checkout')
+    onError: (error: unknown) => {
+      toast.error(getApiErrorMessage(error, 'Unable to start checkout'))
     },
   })
 
@@ -50,15 +50,15 @@ export default function BillingPage() {
     onSuccess: (res) => {
       window.location.href = res.data.portal_url
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.detail || 'Unable to open billing portal')
+    onError: (error: unknown) => {
+      toast.error(getApiErrorMessage(error, 'Unable to open billing portal'))
     },
   })
 
   const isPro = billing?.is_pro ?? false
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f1117', color: '#fff', fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: '#0f1117', color: '#fff', fontFamily: 'inherit' }}>
       {/* Nav */}
       <nav style={{
         height: '56px', borderBottom: '1px solid rgba(255,255,255,0.07)',
@@ -231,11 +231,12 @@ function UsageCard({ title, used, limit, icon, color }: {
       {pct !== null && (
         <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
           <div style={{
-            width: `${pct}%`, height: '100%',
+            width: '100%', height: '100%',
             background: isNearLimit
               ? 'linear-gradient(90deg, #f59e0b, #ef4444)'
               : `linear-gradient(90deg, ${color}, ${color}88)`,
-            borderRadius: '3px', transition: 'width 0.5s ease',
+            borderRadius: '3px', transform: `scaleX(${pct / 100})`,
+            transformOrigin: 'left center', transition: 'transform 0.5s ease-out',
           }} />
         </div>
       )}

@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { queryApi } from '../../services/api'
+import { getApiErrorMessage, queryApi } from '../../services/api'
 import toast from 'react-hot-toast'
+import type { DocumentItem, MultiQueryAnswer } from '../../types'
 
 interface Props {
-  selectedDocs: any[]
+  selectedDocs: DocumentItem[]
   onDeselectDoc: (id: string) => void
   onClearAll: () => void
 }
@@ -18,7 +19,8 @@ const SUGGESTED_QUERIES = [
 export default function MultiDocViewer({ selectedDocs, onDeselectDoc, onClearAll }: Props) {
   const [question, setQuestion] = useState('')
   const [asking, setAsking] = useState(false)
-  const [history, setHistory] = useState<any[]>([])
+  const [history, setHistory] = useState<MultiQueryAnswer[]>([])
+  const [queryError, setQueryError] = useState<string | null>(null)
 
   const docIds = selectedDocs.map(d => d.id)
 
@@ -26,13 +28,16 @@ export default function MultiDocViewer({ selectedDocs, onDeselectDoc, onClearAll
     const q = (queryText || question).trim()
     if (!q || asking) return
     setAsking(true)
+    setQueryError(null)
     if (!queryText) setQuestion('')
 
     try {
       const { data } = await queryApi.askMulti(docIds, q)
       setHistory(prev => [data, ...prev])
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Multi-document query failed')
+    } catch (error: unknown) {
+      const message = getApiErrorMessage(error, 'Multi-document query failed. Check the API and try again.')
+      setQueryError(message)
+      toast.error(message)
     } finally {
       setAsking(false)
     }
@@ -88,9 +93,11 @@ export default function MultiDocViewer({ selectedDocs, onDeselectDoc, onClearAll
               </span>
               <button
                 onClick={() => onDeselectDoc(doc.id)}
+                aria-label={`Remove ${doc.original_filename || doc.filename} from selection`}
                 style={{
                   background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer',
-                  padding: 0, fontSize: '0.9rem', lineHeight: 1, display: 'flex', alignItems: 'center'
+                  padding: 0, fontSize: '0.9rem', lineHeight: 1, display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', width: '32px', height: '32px'
                 }}
               >×</button>
             </div>
@@ -124,6 +131,11 @@ export default function MultiDocViewer({ selectedDocs, onDeselectDoc, onClearAll
 
       {/* Chat / Results Stream */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {queryError && (
+          <div role="alert" style={{ padding: '12px 14px', color: '#fca5a5', background: 'rgba(239,68,68,0.12)', borderRadius: '8px' }}>
+            {queryError}
+          </div>
+        )}
         {history.length === 0 && (
           <div style={{
             textAlign: 'center', padding: '60px 20px', color: '#4b5563',
@@ -165,7 +177,7 @@ export default function MultiDocViewer({ selectedDocs, onDeselectDoc, onClearAll
                   Source Citations &amp; Provenance ({item.sources.length} excerpts)
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px' }}>
-                  {item.sources.map((src: any, sIdx: number) => (
+                  {item.sources.map((src, sIdx) => (
                     <div key={sIdx} style={{
                       background: '#0f1117', border: '1px solid rgba(255,255,255,0.06)',
                       borderRadius: '8px', padding: '10px', fontSize: '0.72rem'
@@ -208,14 +220,18 @@ export default function MultiDocViewer({ selectedDocs, onDeselectDoc, onClearAll
         background: '#131620'
       }}>
         <form onSubmit={(e) => { e.preventDefault(); handleAsk(); }} style={{ display: 'flex', gap: '10px' }}>
+          <label htmlFor="multi-document-question" style={{ position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+            Comparative question
+          </label>
           <input
+            id="multi-document-question"
             type="text"
             placeholder={`Ask a comparative question across all ${selectedDocs.length} documents...`}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             disabled={asking}
             style={{
-              flex: 1, padding: '12px 16px', background: '#0f1117',
+              flex: 1, minWidth: 0, padding: '12px 16px', background: '#0f1117',
               border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px',
               color: '#fff', fontSize: '0.85rem', outline: 'none'
             }}
@@ -224,7 +240,7 @@ export default function MultiDocViewer({ selectedDocs, onDeselectDoc, onClearAll
             type="submit"
             disabled={asking || !question.trim()}
             style={{
-              padding: '0 20px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              minHeight: '44px', padding: '0 20px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
               border: 'none', borderRadius: '8px', color: '#fff', fontSize: '0.85rem',
               fontWeight: 600, cursor: asking ? 'not-allowed' : 'pointer', opacity: asking ? 0.6 : 1
             }}
