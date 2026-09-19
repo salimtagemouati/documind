@@ -5,7 +5,7 @@ GET /api/v1/analytics/admin   — system-wide stats (admin only)
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,11 +13,43 @@ from app.core.logging import get_logger
 from app.core.security import get_current_admin, get_current_user
 from app.db.database import get_db
 from app.models.models import Document, QueryHistory, User
-from app.schemas.schemas import AdminStats, UserStats
+from app.schemas.schemas import AdminStats, BenchmarkSummary, UserStats
 from app.services.cache_service import get_cache_stats
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 logger = get_logger(__name__)
+
+
+@router.get("/eval", response_model=BenchmarkSummary)
+async def get_eval_benchmark():
+    """
+    Returns empirical quality benchmark metrics comparing Baseline Vector Search vs.
+    Two-Stage Hybrid Search with Re-ranking on precision@K, recall@K, MRR, and groundedness.
+    Serves cached benchmark report without recomputing live. Returns 404 if not found.
+    """
+    import json
+    from pathlib import Path
+
+    from app.eval.evaluator import REPORT_FILE
+
+    candidate_paths = [
+        REPORT_FILE,
+        Path(__file__).parents[2] / "benchmark_report.json",
+        Path(__file__).parents[3] / "docs" / "benchmark_report.json",
+    ]
+
+    for p in candidate_paths:
+        if p.exists():
+            try:
+                data = json.loads(p.read_text())
+                return BenchmarkSummary(**data)
+            except Exception as e:
+                logger.warning("benchmark_report_parse_error", path=str(p), error=str(e))
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Benchmark report not found. Please run the evaluation suite first.",
+    )
 
 
 @router.get("/me", response_model=UserStats)

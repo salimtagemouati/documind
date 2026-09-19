@@ -15,13 +15,16 @@ from app.core.security import get_current_user
 from app.db.database import get_db
 from app.models.models import Document, DocumentStatus, QueryHistory, User
 from app.schemas.schemas import (
+    MultiQueryRequest,
+    MultiQueryResponse,
     PaginatedResponse,
     QueryHistoryItem,
     QueryRequest,
     QueryResponse,
 )
-from app.services.ai_service import answer_question
+from app.services.ai_service import answer_question, synthesize_multi_document_query
 from app.services.cache_service import get_cached_answer, set_cached_answer
+from app.services.stripe_service import check_query_limit, increment_daily_queries
 
 router = APIRouter(prefix="/query", tags=["Q&A"])
 logger = get_logger(__name__)
@@ -39,7 +42,7 @@ async def query_document(
     Flow:
     1. Verify document ownership and readiness
     2. Check cache for identical question
-    3. If cache miss: run RAG pipeline (embed → retrieve → generate)
+    3. If cache miss: run RAG pipeline with pgvector + re-ranking
     4. Persist to query history
     5. Return answer with source citations
     """
@@ -73,14 +76,18 @@ async def query_document(
         return QueryResponse(**cached)
 
     # ── Tier enforcement: check daily query limit (only for non-cached) ───
-    # No quota enforcement on queries — only document upload is capped.
+    try:
+        await check_query_limit(str(user_id), db)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
-    # Run RAG pipeline
+    # Run RAG pipeline with pgvector and two-stage re-ranking
     response = await answer_question(
         document_id=payload.document_id,
         question=payload.question,
         query_id=query_id,
         filename=doc.original_filename,
+        db=db,
         max_tokens=payload.max_tokens,
     )
 
@@ -91,7 +98,7 @@ async def query_document(
         document_id=payload.document_id,
         question=payload.question,
         answer=response.answer,
-        sources=[s.model_dump() for s in response.sources],
+        sources=[s.model_dump(mode="json") for s in response.sources],
         model_used=response.model_used,
         tokens_used=response.tokens_used,
         latency_ms=response.latency_ms,
@@ -108,6 +115,10 @@ async def query_document(
 
     await db.commit()
 
+    # Track daily query count for tier enforcement
+    await increment_daily_queries(str(user_id), db)
+    await db.commit()
+
     # Cache the response (serialize for storage)
     cache_payload = {
         "question": response.question,
@@ -120,6 +131,92 @@ async def query_document(
         "query_id": str(query_id),
     }
     await set_cached_answer(str(payload.document_id), payload.question, cache_payload)
+
+    return response
+
+
+@router.post("/multi", response_model=MultiQueryResponse)
+async def query_multiple_documents(
+    payload: MultiQueryRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Multi-Document Cross-Query & Synthesis Engine.
+    Retrieves evidence across multiple documents and generates a comparative,
+    provenance-attributed synthesis.
+    """
+    from uuid import UUID as UUIDType
+    user_id = UUIDType(current_user["sub"])
+
+    # Verify all documents exist, are owned by user, and are ready
+    result = await db.execute(
+        select(Document).where(
+            Document.id.in_(payload.document_ids),
+            Document.user_id == user_id,
+        )
+    )
+    docs = result.scalars().all()
+    if len(docs) != len(payload.document_ids):
+        found_ids = {d.id for d in docs}
+        missing = [str(did) for did in payload.document_ids if did not in found_ids]
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"One or more documents not found or unauthorized: {', '.join(missing)}",
+        )
+
+    for d in docs:
+        if d.status != DocumentStatus.ready:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f'Document "{d.original_filename}" is {d.status.value}. Please wait for processing to complete.',
+            )
+
+    # Tier enforcement
+    try:
+        await check_query_limit(str(user_id), db)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+
+    query_id = uuid.uuid4()
+    docs_meta = [{"id": d.id, "name": d.original_filename or d.filename} for d in docs]
+
+    # Synthesize across documents with balanced retrieval + cross-encoder reranking
+    response = await synthesize_multi_document_query(
+        document_ids=payload.document_ids,
+        question=payload.question,
+        query_id=query_id,
+        documents_meta=docs_meta,
+        db=db,
+        max_tokens=payload.max_tokens,
+        enable_rerank=payload.enable_rerank,
+    )
+
+    # Persist multi-document query in history
+    history_entry = QueryHistory(
+        id=query_id,
+        user_id=user_id,
+        document_id=payload.document_ids[0],
+        document_ids=[str(did) for did in payload.document_ids],
+        question=payload.question,
+        answer=response.answer,
+        sources=[s.model_dump(mode="json") for s in response.sources],
+        model_used=response.model_used,
+        tokens_used=response.tokens_used,
+        latency_ms=response.latency_ms,
+        from_cache=False,
+    )
+    db.add(history_entry)
+
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if user:
+        user.queries_made = (user.queries_made or 0) + 1
+        user.ai_tokens_used = (user.ai_tokens_used or 0) + response.tokens_used
+
+    await db.commit()
+    await increment_daily_queries(str(user_id), db)
+    await db.commit()
 
     return response
 

@@ -13,13 +13,13 @@ import sentry_sdk
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 
-from app.api.routes import analytics, auth, documents, query, ws
+from app.api.routes import analytics, auth, billing, documents, query, ws
 from app.core.config import get_settings
+from app.core.limiter import limiter
 from app.core.logging import configure_logging, get_logger
 from app.db.database import close_db, init_db
 
@@ -33,20 +33,13 @@ if settings.SENTRY_DSN:
     sentry_sdk.init(dsn=settings.SENTRY_DSN, traces_sample_rate=0.2)
 
 
-# ─── Rate limiter ─────────────────────────────────────────────────────────────
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
-
-
 # ─── Lifespan ────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("startup", app=settings.APP_NAME, env=settings.ENVIRONMENT)
     await init_db()
 
-    # Purge old FAISS indexes if they exist (OpenAI 1536d → Gemini 768d migration).
-    # This is safe to run repeatedly — it only deletes .faiss/.meta files.
-    from app.services.rag_service import purge_all_indexes
-    purge_all_indexes()
+    logger.info("vector_store_active", engine="pgvector", table="document_chunks")
 
     yield
     await close_db()
@@ -94,6 +87,7 @@ app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(documents.router, prefix=API_PREFIX)
 app.include_router(query.router, prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
+app.include_router(billing.router, prefix=API_PREFIX)
 app.include_router(ws.router, prefix=API_PREFIX)
 
 

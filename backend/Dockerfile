@@ -28,9 +28,6 @@ COPY --from=builder /install /usr/local
 # Copy application source
 COPY app/ ./app/
 
-# Create data directories
-RUN mkdir -p ./data/faiss_indexes
-
 # Non-root user for security
 RUN useradd -m -u 1001 documind && chown -R documind:documind /app
 USER documind

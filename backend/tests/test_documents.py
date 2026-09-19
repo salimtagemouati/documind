@@ -45,7 +45,7 @@ async def test_delete_document(auth_client: AsyncClient):
     doc_id = upload.json()["id"]
     
     response = await auth_client.delete(f"/api/v1/documents/{doc_id}")
-    assert response.status_code == 200
+    assert response.status_code in [200, 204]
     
     get_resp = await auth_client.get(f"/api/v1/documents/{doc_id}")
     assert get_resp.status_code == 404

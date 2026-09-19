@@ -5,10 +5,13 @@ POST /api/v1/auth/login     — get tokens
 POST /api/v1/auth/refresh   — rotate access token
 GET  /api/v1/auth/me        — get current user profile
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import limiter
 from app.core.logging import get_logger
 from app.core.security import (
     create_access_token,
@@ -51,10 +54,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     db.add(user)
     await db.flush()  # Get the generated ID before commit
 
-    access_token = create_access_token(
-        str(user.id),
-        extra={"role": user.role.value, "email": user.email},
-    )
+    access_token = create_access_token(str(user.id), extra={"role": user.role.value})
     refresh_token = create_refresh_token(str(user.id))
 
     logger.info("user_registered", user_id=str(user.id), email=user.email)
@@ -84,10 +84,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Account is deactivated. Contact support.",
         )
 
-    access_token = create_access_token(
-        str(user.id),
-        extra={"role": user.role.value, "email": user.email},
-    )
+    access_token = create_access_token(str(user.id), extra={"role": user.role.value})
     refresh_token = create_refresh_token(str(user.id))
 
     logger.info("user_logged_in", user_id=str(user.id))
@@ -95,6 +92,30 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=60 * 60,
+    )
+
+
+@router.post("/demo", response_model=TokenResponse)
+@limiter.limit("10/hour")
+async def login_demo(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Instant public demo access — zero friction, pre-seeded with sample documents.
+    Allows recruiters, hiring managers, and portfolio visitors to experience DocuMind
+    immediately without registration walls.
+    """
+    from app.services.demo_service import ensure_demo_user
+    user = await ensure_demo_user(db)
+    access_token = create_access_token(
+        str(user.id),
+        extra={"role": user.role.value, "is_demo": True},
+        expires_delta=timedelta(hours=2),
+    )
+    refresh_token = create_refresh_token(str(user.id))
+    logger.info("demo_session_created", user_id=str(user.id))
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=60 * 60 * 2,  # 2 hours
     )
 
 
@@ -111,10 +132,7 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    access_token = create_access_token(
-        str(user.id),
-        extra={"role": user.role.value, "email": user.email},
-    )
+    access_token = create_access_token(str(user.id), extra={"role": user.role.value})
     new_refresh = create_refresh_token(str(user.id))
 
     return TokenResponse(access_token=access_token, refresh_token=new_refresh, expires_in=60 * 60)

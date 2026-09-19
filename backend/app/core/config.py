@@ -57,17 +57,33 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 20
     ALLOWED_EXTENSIONS: Any = ["pdf", "txt", "docx", "md"]
 
-    # ─── AI / LLM — Google Gemini (free tier) ───────────────────────────────
-    GOOGLE_API_KEY: str
-    GEMINI_CHAT_MODEL: str = "gemini-1.5-flash"
-    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
+    # ─── Multi-Provider AI / LLM (LiteLLM abstraction) ──────────────────────
+    LLM_PROVIDER: str = "gemini"         # gemini | openai | anthropic | groq | ollama
+    GOOGLE_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    OLLAMA_API_BASE: str = "http://localhost:11434"
 
-    # ─── RAG / Chunking ─────────────────────────────────────────────────────
+    # Default to current generation free-tier models verified via verify_gemini_key.py
+    LLM_MODEL: str = "gemini/gemini-3.5-flash-lite"
+    EMBEDDING_MODEL: str = "gemini/gemini-embedding-001"
+    EMBEDDING_DIM: int = 768
+    LLM_MAX_CONCURRENCY: int = 3
+
+    # Backward compatibility properties
+    GEMINI_CHAT_MODEL: str = "gemini-3.5-flash-lite"
+    GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
+
+    # ─── RAG / Retrieval & Re-ranking ───────────────────────────────────────
     CHUNK_SIZE: int = 800                 # tokens per chunk
     CHUNK_OVERLAP: int = 100             # overlap between consecutive chunks
     MAX_CHUNKS_PER_DOC: int = 200        # hard cap to control cost
-    RAG_TOP_K: int = 6                   # chunks to retrieve per query
-    RAG_SIMILARITY_THRESHOLD: float = 0.70
+    RAG_TOP_K: int = 6                   # final chunks for LLM context
+    RAG_INITIAL_TOP_K: int = 15          # candidate pool for 2-stage reranking
+    RAG_SIMILARITY_THRESHOLD: float = 0.50
+    ENABLE_RERANKING: bool = True
+    ENABLE_HYBRID_SEARCH: bool = True
 
     # ─── Rate limiting ──────────────────────────────────────────────────────
     RATE_LIMIT_REQUESTS: int = 60        # requests per window
@@ -79,9 +95,14 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
     CACHE_TTL_SECONDS: int = 3600        # 1 hour default TTL
 
-    # ─── Quotas (no billing) ────────────────────────────────────────────────
-    # Maximum number of documents a single account can process. Set to 0 to disable.
-    FREE_DOC_LIMIT: int = 10
+    # ─── Stripe (billing) ───────────────────────────────────────────────────
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_ID_PRO: str = ""       # Monthly Pro plan price ID
+    STRIPE_FREE_DOC_LIMIT: int = 3
+    STRIPE_FREE_QUERY_LIMIT: int = 20   # Per day
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # ─── Monitoring ─────────────────────────────────────────────────────────
     SENTRY_DSN: str = ""

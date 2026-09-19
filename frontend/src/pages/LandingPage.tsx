@@ -131,12 +131,20 @@ const stats = [
 ]
 
 const freePlanFeatures = [
-  `Up to ${10} documents`,
-  'Unlimited AI queries',
+  'Up to 3 documents',
+  '20 AI queries per day',
   'PDF, DOCX, TXT support',
   'Entity extraction',
   'Sentiment analysis',
-  'RAG Q&A',
+]
+
+const proPlanFeatures = [
+  'Unlimited documents',
+  'Unlimited AI queries',
+  'Priority processing',
+  'Advanced analytics',
+  'API access',
+  'Email support',
 ]
 
 /* ─── Intersection Observer Hook ─── */
@@ -187,6 +195,7 @@ export default function LandingPage() {
           <li><a href="#features">Features</a></li>
           <li><a href="#how-it-works">How It Works</a></li>
           <li><a href="#pricing">Pricing</a></li>
+          <li><Link to="/demo" style={{ color: '#818cf8', fontWeight: 600 }}>Try Live Demo</Link></li>
           <li><Link to="/login">Sign In</Link></li>
           <li><Link to="/register" className="nav-cta">Get Started Free</Link></li>
         </ul>
@@ -204,7 +213,7 @@ export default function LandingPage() {
         <div className="hero-content">
           <div className="hero-badge fade-up">
             <span className="hero-badge-dot" />
-            Powered by Gemini AI &amp; FAISS Vector Search
+            Two-Stage RAG · pgvector · Multi-Provider LLM · Cross-Encoder Re-ranking
           </div>
 
           <h1 className="hero-title fade-up fade-up-d1">
@@ -213,19 +222,19 @@ export default function LandingPage() {
           </h1>
 
           <p className="hero-subtitle fade-up fade-up-d2">
-            Upload any document and instantly extract summaries, entities,
-            sentiment — then ask questions and get AI-grounded answers
-            with source citations.
+            Ask complex questions across single or multiple documents.
+            Experience hybrid semantic search, two-stage re-ranking, and
+            factual answers with proven source provenance.
           </p>
 
           <div className="hero-actions fade-up fade-up-d3">
-            <Link to="/register" className="btn btn-primary" id="cta-get-started">
-              Get Started Free
+            <Link to="/demo" className="btn btn-primary" id="cta-try-demo" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
+              Explore Live Demo
               <IconArrowRight />
             </Link>
-            <a href="#how-it-works" className="btn btn-secondary" id="cta-view-demo">
-              See How It Works
-            </a>
+            <Link to="/register" className="btn btn-secondary" id="cta-get-started">
+              Create Account
+            </Link>
           </div>
         </div>
       </section>
@@ -338,15 +347,15 @@ export default function LandingPage() {
                 <span className="section-label-line" />
                 Pricing
               </div>
-              <h2 className="section-title">Free While in Beta</h2>
+              <h2 className="section-title">Simple, Transparent Pricing</h2>
               <p className="section-subtitle">
-                No payments, no credit card. Just sign up and start analyzing documents.
+                Start free. Upgrade when you need more power.
               </p>
             </div>
           </RevealSection>
 
           <RevealSection>
-            <div className="pricing-grid" style={{ justifyContent: 'center' }}>
+            <div className="pricing-grid">
               {/* Free Tier */}
               <div className="pricing-card" id="pricing-free">
                 <div className="pricing-name">Free</div>
@@ -354,7 +363,7 @@ export default function LandingPage() {
                   <span className="pricing-amount">$0</span>
                   <span className="pricing-period">/ month</span>
                 </div>
-                <p className="pricing-desc">Everything you need to try DocuMind today.</p>
+                <p className="pricing-desc">Perfect for trying out document intelligence.</p>
                 <ul className="pricing-features">
                   {freePlanFeatures.map((feat, i) => (
                     <li key={i}>
@@ -363,8 +372,30 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <Link to="/register" className="btn btn-primary btn-pricing" id="pricing-free-cta">
+                <Link to="/register" className="btn btn-secondary btn-pricing" id="pricing-free-cta">
                   Get Started Free
+                </Link>
+              </div>
+
+              {/* Pro Tier */}
+              <div className="pricing-card pricing-card--pro" id="pricing-pro">
+                <div className="pricing-popular">Most Popular</div>
+                <div className="pricing-name">Pro</div>
+                <div className="pricing-price">
+                  <span className="pricing-amount">$12</span>
+                  <span className="pricing-period">/ month</span>
+                </div>
+                <p className="pricing-desc">For professionals who need unlimited power.</p>
+                <ul className="pricing-features">
+                  {proPlanFeatures.map((feat, i) => (
+                    <li key={i}>
+                      <span className="pricing-check pricing-check--pro"><IconCheck /></span>
+                      {feat}
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/register" className="btn btn-primary btn-pricing" id="pricing-pro-cta">
+                  Start Pro Trial
                   <IconArrowRight />
                 </Link>
               </div>

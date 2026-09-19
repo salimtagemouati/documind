@@ -48,20 +48,14 @@ async def get_redis() -> Optional[Any]:
     return _redis
 
 
-def _make_cache_key(prefix: str, document_id: str, *parts: str) -> str:
-    """
-    Stable, collision-resistant cache key.
-
-    Format: documind:{prefix}:{document_id}:{digest}
-
-    The raw document_id is embedded in the key so that pattern-based
-    invalidation (`documind:*:{document_id}*`) actually finds the keys.
-    The trailing digest preserves uniqueness across questions /
-    analysis types within a single document.
-    """
-    raw = "|".join(str(p) for p in parts)
-    digest = hashlib.sha256(raw.encode()).hexdigest()[:16]
-    return f"documind:{prefix}:{document_id}:{digest}"
+def _make_cache_key(prefix: str, *parts: str) -> str:
+    """Stable, collision-resistant cache key preserving prefix and document ID for invalidation."""
+    if not parts:
+        return f"documind:{prefix}"
+    doc_id = str(parts[0])
+    raw = "|".join(str(p) for p in parts[1:]) if len(parts) > 1 else ""
+    digest = hashlib.sha256(raw.encode()).hexdigest()[:16] if raw else "all"
+    return f"documind:{prefix}:{doc_id}:{digest}"
 
 
 def _normalize_question(q: str) -> str:
@@ -71,62 +65,75 @@ def _normalize_question(q: str) -> str:
 
 async def get_cached_answer(document_id: str, question: str) -> Optional[dict]:
     key = _make_cache_key("qa", document_id, _normalize_question(question))
-    r = await get_redis()
-    if r:
-        val = await r.get(key)
-        if val:
-            logger.debug("cache_hit", key=key)
-            return json.loads(val)
-    else:
-        val = _memory_cache.get(key)
-        if val:
-            return val
+    try:
+        r = await get_redis()
+        if r:
+            val = await r.get(key)
+            if val:
+                logger.debug("cache_hit", key=key)
+                return json.loads(val)
+    except Exception as e:
+        logger.warning("redis_cache_get_failed", error=str(e))
+    val = _memory_cache.get(key)
+    if val:
+        return val
     return None
 
 
 async def set_cached_answer(document_id: str, question: str, data: dict) -> None:
     key = _make_cache_key("qa", document_id, _normalize_question(question))
-    r = await get_redis()
-    if r:
-        await r.setex(key, settings.CACHE_TTL_SECONDS, json.dumps(data))
-    else:
-        _memory_cache[key] = data
-    logger.debug("cache_set", key=key, ttl=settings.CACHE_TTL_SECONDS)
+    try:
+        r = await get_redis()
+        if r:
+            await r.setex(key, settings.CACHE_TTL_SECONDS, json.dumps(data))
+            logger.debug("cache_set", key=key, ttl=settings.CACHE_TTL_SECONDS)
+            return
+    except Exception as e:
+        logger.warning("redis_cache_set_failed", error=str(e))
+    _memory_cache[key] = data
 
 
 async def get_cached_analysis(document_id: str, analysis_type: str) -> Optional[dict]:
     """Cache document analysis results (summary, entities, sentiment)."""
-    key = _make_cache_key(analysis_type, document_id, analysis_type)
-    r = await get_redis()
-    if r:
-        val = await r.get(key)
-        return json.loads(val) if val else None
+    key = _make_cache_key(analysis_type, document_id)
+    try:
+        r = await get_redis()
+        if r:
+            val = await r.get(key)
+            return json.loads(val) if val else None
+    except Exception as e:
+        logger.warning("redis_cache_get_failed", error=str(e))
     return _memory_cache.get(key)
 
 
 async def set_cached_analysis(document_id: str, analysis_type: str, data: dict) -> None:
-    key = _make_cache_key(analysis_type, document_id, analysis_type)
-    r = await get_redis()
-    if r:
-        await r.setex(key, settings.CACHE_TTL_SECONDS, json.dumps(data))
-    else:
-        _memory_cache[key] = data
+    key = _make_cache_key(analysis_type, document_id)
+    try:
+        r = await get_redis()
+        if r:
+            await r.setex(key, settings.CACHE_TTL_SECONDS, json.dumps(data))
+            return
+    except Exception as e:
+        logger.warning("redis_cache_set_failed", error=str(e))
+    _memory_cache[key] = data
 
 
 async def invalidate_document_cache(document_id: str) -> None:
     """Delete all cache entries related to a document."""
-    r = await get_redis()
-    if r:
-        # Matches documind:{any-prefix}:{document_id}:{any-digest}
-        pattern = f"documind:*:{document_id}:*"
-        keys = await r.keys(pattern)
-        if keys:
-            await r.delete(*keys)
-            logger.info("cache_invalidated", document_id=document_id, keys=len(keys))
-    else:
-        to_delete = [k for k in _memory_cache if f":{document_id}:" in k]
-        for k in to_delete:
-            del _memory_cache[k]
+    try:
+        r = await get_redis()
+        if r:
+            pattern = f"documind:*:{document_id}*"
+            keys = await r.keys(pattern)
+            if keys:
+                await r.delete(*keys)
+                logger.info("cache_invalidated", document_id=document_id, keys=len(keys))
+    except Exception as e:
+        logger.warning("redis_cache_invalidate_failed", error=str(e))
+
+    to_delete = [k for k in _memory_cache if document_id in k]
+    for k in to_delete:
+        del _memory_cache[k]
 
 
 async def get_cache_stats() -> dict:

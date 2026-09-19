@@ -14,8 +14,10 @@ interface Doc {
 interface Props {
   documents: Doc[]
   loading: boolean
-  selectedId: string | null
+  selectedId?: string | null
+  selectedIds?: string[]
   onSelect: (id: string) => void
+  onToggleSelect?: (id: string) => void
   onDelete: (id: string) => void
   progressMap?: Record<string, ProgressEvent>
 }
@@ -49,7 +51,16 @@ function fmtSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }
 
-export default function DocumentList({ documents, loading, selectedId, onSelect, onDelete, progressMap = {} }: Props) {
+export default function DocumentList({
+  documents,
+  loading,
+  selectedId,
+  selectedIds,
+  onSelect,
+  onToggleSelect,
+  onDelete,
+  progressMap = {}
+}: Props) {
   if (loading) {
     return (
       <div style={{ padding: '16px' }}>
@@ -68,15 +79,28 @@ export default function DocumentList({ documents, loading, selectedId, onSelect,
     )
   }
 
+  const effectiveSelectedIds = selectedIds ?? (selectedId ? [selectedId] : [])
+
   return (
     <div style={{ padding: '8px' }}>
-      <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#4b5563', padding: '4px 8px 8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-        Documents ({documents.length})
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px 8px' }}>
+        <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#4b5563', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          Documents ({documents.length})
+        </div>
+        {effectiveSelectedIds.length > 1 && (
+          <span style={{
+            fontSize: '0.62rem', background: 'rgba(99,102,241,0.2)', color: '#818cf8',
+            padding: '2px 8px', borderRadius: '10px', fontWeight: 600
+          }}>
+            {effectiveSelectedIds.length} Selected
+          </span>
+        )}
       </div>
       {documents.map(doc => {
         const progress = progressMap[doc.id]
         const isProcessing = doc.status === 'processing' || doc.status === 'pending'
         const hasProgress = isProcessing && progress
+        const isSelected = effectiveSelectedIds.includes(doc.id)
 
         return (
           <div
@@ -87,13 +111,44 @@ export default function DocumentList({ documents, loading, selectedId, onSelect,
               borderRadius: '8px',
               cursor: 'pointer',
               marginBottom: '2px',
-              background: selectedId === doc.id ? 'rgba(99,102,241,0.15)' : 'transparent',
-              border: `1px solid ${selectedId === doc.id ? 'rgba(99,102,241,0.3)' : 'transparent'}`,
+              background: isSelected ? 'rgba(99,102,241,0.15)' : 'transparent',
+              border: `1px solid ${isSelected ? 'rgba(99,102,241,0.3)' : 'transparent'}`,
               transition: 'all 0.1s',
               position: 'relative',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+            {onToggleSelect && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onToggleSelect(doc.id)
+                }}
+                style={{
+                  marginTop: '2px',
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: '4px',
+                  border: `1.5px solid ${isSelected ? '#6366f1' : 'rgba(255,255,255,0.2)'}`,
+                  background: isSelected ? '#6366f1' : 'rgba(255,255,255,0.03)',
+                  color: '#fff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.65rem',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  padding: 0,
+                }}
+                title={isSelected ? "Deselect" : "Select for multi-document cross-query"}
+              >
+                {isSelected ? '✓' : ''}
+              </button>
+            )}
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
               <div style={{ flex: 1, overflow: 'hidden' }}>
                 <div style={{
                   fontSize: '0.82rem', fontWeight: 500, color: '#e5e7eb',

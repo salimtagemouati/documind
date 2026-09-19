@@ -48,3 +48,8 @@ htmlcov/
 # Logs
 *.log
 logs/
+
+# Evaluation Cache
+.eval_cache/
+backend/.eval_cache/
+

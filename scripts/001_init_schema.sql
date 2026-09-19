@@ -3,9 +3,10 @@
 -- Run this in Supabase SQL Editor (or psql directly)
 -- ============================================================
 
--- Enable UUID extension
+-- Enable UUID, pg_trgm, and pgvector extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- for text search
+CREATE EXTENSION IF NOT EXISTS "vector";   -- for durable pgvector storage
 
 -- ─── ENUMS ─────────────────────────────────────────────────
 CREATE TYPE user_role AS ENUM ('user', 'premium', 'admin');
@@ -77,7 +78,7 @@ CREATE TRIGGER trg_documents_updated_at
     BEFORE UPDATE ON documents
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- ─── DOCUMENT CHUNKS ───────────────────────────────────────
+-- ─── DOCUMENT CHUNKS (with pgvector) ───────────────────────
 CREATE TABLE document_chunks (
     id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     document_id    UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
@@ -85,19 +86,22 @@ CREATE TABLE document_chunks (
     content        TEXT NOT NULL,
     token_count    INTEGER NOT NULL,
     page_number    INTEGER,
-    embedding_id   TEXT,
+    embedding      vector(768),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     UNIQUE (document_id, chunk_index)
 );
 
 CREATE INDEX idx_chunks_document_id ON document_chunks (document_id);
+CREATE INDEX idx_chunks_embedding_hnsw ON document_chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_chunks_content_fts ON document_chunks USING GIN (to_tsvector('english', content));
 
 -- ─── QUERY HISTORY ─────────────────────────────────────────
 CREATE TABLE query_history (
     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     document_id   UUID REFERENCES documents(id) ON DELETE SET NULL,
+    document_ids  JSONB,
     question      TEXT NOT NULL,
     answer        TEXT NOT NULL,
     sources       JSONB,

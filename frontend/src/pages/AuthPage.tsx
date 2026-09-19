@@ -10,7 +10,7 @@ export default function AuthPage({ mode }: { mode: Mode }) {
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login, register } = useAuthStore()
+  const { login, register, loginAsDemo } = useAuthStore()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,6 +95,46 @@ export default function AuthPage({ mode }: { mode: Mode }) {
             }}>
               {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : 'Create Account'}
             </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', margin: '6px 0', gap: '8px' }}>
+              <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>or</span>
+              <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+            </div>
+
+            <button
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true)
+                try {
+                  await loginAsDemo()
+                  toast.success('Welcome to DocuMind Public Demo!')
+                  navigate('/dashboard')
+                } catch {
+                  toast.error('Could not connect to demo session')
+                } finally {
+                  setLoading(false)
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '11px',
+                background: 'rgba(99,102,241,0.12)',
+                border: '1px solid rgba(99,102,241,0.3)',
+                borderRadius: '8px',
+                color: '#a5b4fc',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+            >
+              <span>🚀</span> Explore as Guest (Live Demo)
+            </button>
           </form>
 
           <p style={{ textAlign: 'center', marginTop: '20px', fontSize: '0.85rem', color: '#6b7280' }}>
@@ -106,8 +146,8 @@ export default function AuthPage({ mode }: { mode: Mode }) {
           </p>
         </div>
 
-        <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.75rem', color: '#374151' }}>
-          RAG · Entity Extraction · Sentiment · Q&A · Powered by Google Gemini
+        <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.75rem', color: '#6b7280' }}>
+          pgvector · Hybrid Search · Re-ranking · Cross-Document Synthesis
         </p>
       </div>
     </div>

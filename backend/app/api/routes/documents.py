@@ -8,9 +8,7 @@ GET  /api/v1/documents/{id}/analysis — get full AI analysis
 DELETE /api/v1/documents/{id}     — delete document + cleanup
 """
 import asyncio
-import re
 import uuid
-from pathlib import PurePosixPath
 from uuid import UUID
 
 from fastapi import (
@@ -28,8 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.security import get_current_user
-from app.db.database import get_db, get_supabase_admin
-from app.models.models import Document, DocumentChunk, DocumentStatus, User
+from app.db import database
+from app.db.database import get_db
+from app.models.models import Document, DocumentStatus, User
 from app.schemas.schemas import (
     DocumentAnalysis,
     DocumentMeta,
@@ -50,45 +49,12 @@ from app.services.cache_service import (
 )
 from app.services.document_processor import chunk_text, extract_text, validate_file
 from app.services.progress_service import publish_progress
-from app.services.quota_service import check_document_limit
 from app.services.rag_service import build_document_index, delete_document_index
+from app.services.stripe_service import check_document_limit
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 settings = get_settings()
 logger = get_logger(__name__)
-
-
-# ─── Filename sanitization ────────────────────────────────────────────────────
-_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]")
-
-
-def _safe_filename(raw: str | None, fallback_ext: str = "bin") -> str:
-    """
-    Strict sanitizer for user-supplied filenames.
-
-    - Strips any directory components (defends against `../` and `\\` traversal)
-    - Replaces control / non-ASCII / unsafe chars with `_`
-    - Strips leading dots (no `.htaccess`-style hidden files)
-    - Caps length at 200 chars
-    - Falls back to `unnamed.<ext>` if the result is empty
-
-    The output is safe to embed in a filesystem path or storage key; it should
-    NEVER be used to overwrite a real filename — pair with a uuid in the path.
-    """
-    if not raw:
-        return f"unnamed.{fallback_ext}"
-
-    # Take only the basename — defends against "../../etc/passwd" and "\\foo"
-    base = PurePosixPath(raw.replace("\\", "/")).name
-
-    # Strip control chars + collapse anything outside the safe set
-    cleaned = _SAFE_FILENAME_RE.sub("_", base).lstrip(".").strip("_")
-
-    if not cleaned:
-        return f"unnamed.{fallback_ext}"
-
-    # Cap length — most filesystems allow 255, but storage providers vary
-    return cleaned[:200]
 
 
 # ─── Background processing pipeline ──────────────────────────────────────────
@@ -140,23 +106,12 @@ async def process_document_pipeline(document_id: UUID, file_bytes: bytes, db_ses
                 f"Created {len(chunks_data)} chunks ({doc.token_count:,} tokens)"
             )
 
-            # ── Stage 3: Persist chunks ───────────────────────────────────
-            for chunk in chunks_data:
-                db_chunk = DocumentChunk(
-                    document_id=document_id,
-                    chunk_index=chunk["chunk_index"],
-                    content=chunk["content"],
-                    token_count=chunk["token_count"],
-                )
-                db.add(db_chunk)
-            await db.flush()
-
-            # ── Stage 4: Build FAISS index (embeddings) ───────────────────
+            # ── Stage 3: Generate embeddings & persist to pgvector ─────────
             await publish_progress(doc_id_str, "embedding", 50, "Generating vector embeddings...")
-            logger.info("pipeline_building_index", document_id=doc_id_str)
-            await build_document_index(document_id, chunks_data)
+            logger.info("pipeline_building_pgvector_index", document_id=doc_id_str)
+            await build_document_index(db, document_id, chunks_data)
 
-            await publish_progress(doc_id_str, "embedding", 65, "Vector index built successfully")
+            await publish_progress(doc_id_str, "embedding", 65, "pgvector embeddings stored successfully")
 
             # ── Stage 5: AI analysis (run concurrently for speed) ─────────
             await publish_progress(doc_id_str, "analyzing", 70, "Running AI analysis...")
@@ -227,35 +182,34 @@ async def upload_document(
     Processing happens asynchronously in the background.
     Connect via WebSocket at /api/v1/ws/documents/{id} for real-time progress.
     """
-    file_bytes = await file.read()
-    raw_filename = file.filename or ""
-    file_type = raw_filename.rsplit(".", 1)[-1].lower() if "." in raw_filename else ""
+    if current_user.get("is_demo") or current_user.get("role") == "demo":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo accounts are read-only. Create a free account to upload your own documents.",
+        )
 
-    # Validate before storing (uses the raw filename for ext detection only — no path use)
+    file_bytes = await file.read()
+    file_type = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+
+    # Validate before storing
     try:
-        validate_file(raw_filename, len(file_bytes), file_type)
+        validate_file(file.filename, len(file_bytes), file_type)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
     from uuid import UUID as UUIDType
     user_id = UUIDType(current_user["sub"])
 
-    # ── Document limit enforcement ────────────────────────────────────
+    # ── Tier enforcement: check document limit ────────────────────────
     try:
         await check_document_limit(str(user_id), db)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
-    # Sanitize the filename used for both display + storage path.
-    # The storage path is built from trusted parts only: user_id (UUID),
-    # a fresh UUID, and the sanitized filename. This makes path traversal
-    # via `file.filename` ("../foo") impossible.
-    safe_name = _safe_filename(raw_filename, fallback_ext=file_type or "bin")
-    storage_path = f"{user_id}/{uuid.uuid4()}/{safe_name}"
-
     # Upload to Supabase Storage
+    storage_path = f"{user_id}/{uuid.uuid4()}/{file.filename}"
     try:
-        supabase = get_supabase_admin()
+        supabase = database.get_supabase_admin()
         supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
             path=storage_path,
             file=file_bytes,
@@ -265,12 +219,11 @@ async def upload_document(
         logger.error("storage_upload_failed", error=str(e))
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="File upload failed")
 
-    # Create DB record. We persist the sanitized filename for original_filename
-    # so it's safe to interpolate into LLM prompts, logs, etc.
+    # Create DB record
     doc = Document(
         user_id=user_id,
-        filename=safe_name,
-        original_filename=safe_name,
+        filename=storage_path.rsplit("/", 1)[-1],
+        original_filename=file.filename,
         file_type=file_type,
         file_size_bytes=len(file_bytes),
         storage_path=storage_path,
@@ -283,7 +236,7 @@ async def upload_document(
     from app.db.database import AsyncSessionLocal
     background_tasks.add_task(process_document_pipeline, doc.id, file_bytes, AsyncSessionLocal)
 
-    logger.info("document_uploaded", document_id=str(doc.id), filename=safe_name)
+    logger.info("document_uploaded", document_id=str(doc.id), filename=file.filename)
     return DocumentUploadResponse(
         id=doc.id,
         filename=doc.original_filename,
@@ -383,12 +336,18 @@ async def delete_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a document, its chunks, FAISS index, and cached data."""
+    if current_user.get("is_demo") or current_user.get("role") == "demo":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo accounts are read-only. Cannot delete sample documents.",
+        )
+
     from uuid import UUID as UUIDType
     doc = await _get_user_document(document_id, UUIDType(current_user["sub"]), db)
 
     # Delete from Supabase Storage
     try:
-        get_supabase_admin().storage.from_(settings.SUPABASE_BUCKET).remove([doc.storage_path])
+        database.get_supabase_admin().storage.from_(settings.SUPABASE_BUCKET).remove([doc.storage_path])
     except Exception as e:
         logger.warning("storage_delete_failed", error=str(e))
 
@@ -400,6 +359,7 @@ async def delete_document(
 
     # Delete DB record (cascades to chunks + query history)
     await db.delete(doc)
+    await db.commit()
 
     logger.info("document_deleted", document_id=str(document_id))
     return MessageResponse(message="Document deleted successfully")

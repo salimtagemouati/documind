@@ -6,6 +6,7 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -60,6 +61,14 @@ class User(Base):
     documents_processed = Column(Integer, default=0)
     queries_made = Column(Integer, default=0)
     ai_tokens_used = Column(Integer, default=0)
+
+    # Billing (Stripe)
+    stripe_customer_id = Column(String(255), unique=True, nullable=True)
+    subscription_status = Column(String(50), default="inactive")   # active | inactive | trialing | canceled | past_due
+    subscription_tier = Column(String(50), default="free")          # free | pro
+    stripe_subscription_id = Column(String(255), nullable=True)
+    daily_queries_count = Column(Integer, default=0)
+    daily_queries_date = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -124,8 +133,8 @@ class DocumentChunk(Base):
     token_count = Column(Integer, nullable=False)
     page_number = Column(Integer)                           # For PDFs
 
-    # Embedding stored as JSON array (FAISS handles the actual vector index)
-    embedding_id = Column(String(100))                      # FAISS index reference
+    # Durable vector embedding in pgvector (PostgreSQL)
+    embedding = Column(Vector(768), nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
@@ -139,6 +148,7 @@ class QueryHistory(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True)
+    document_ids = Column(JSON, nullable=True)             # List of document IDs for multi-doc synthesis queries
 
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)

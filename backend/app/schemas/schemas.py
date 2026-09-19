@@ -141,6 +141,71 @@ class QueryResponse(BaseModel):
     latency_ms: int
     from_cache: bool
     query_id: UUID
+    reranked: bool = False
+
+
+# ─── Multi-Document RAG ──────────────────────────────────────────────────────
+class MultiQueryRequest(BaseModel):
+    document_ids: List[UUID] = Field(min_length=2, max_length=5)
+    question: str = Field(min_length=1, max_length=2000)
+    max_tokens: int = Field(default=1000, ge=100, le=4000)
+    enable_rerank: bool = Field(default=True)
+
+
+class MultiSourceChunk(BaseModel):
+    content: str
+    chunk_index: int
+    document_id: UUID
+    document_name: str
+    page_number: Optional[int] = None
+    similarity_score: float
+    rerank_score: Optional[float] = None
+    # Aliases/convenience fields
+    document_title: Optional[str] = None
+    snippet: Optional[str] = None
+    page: Optional[int] = None
+    score: Optional[float] = None
+
+    def model_post_init(self, __context):
+        if self.document_title is None:
+            self.document_title = self.document_name
+        if self.snippet is None:
+            self.snippet = self.content
+        if self.page is None:
+            self.page = self.page_number
+        if self.score is None:
+            self.score = self.rerank_score if self.rerank_score is not None else self.similarity_score
+
+
+class MultiQueryResponse(BaseModel):
+    question: str
+    answer: str
+    sources: List[MultiSourceChunk]
+    documents_queried: List[dict]
+    model_used: str
+    tokens_used: int
+    latency_ms: int
+    reranked: bool = False
+    from_cache: bool = False
+    query_id: UUID
+
+
+# ─── Evaluation / Benchmark ──────────────────────────────────────────────────
+class BenchmarkMetric(BaseModel):
+    name: str
+    baseline: float
+    reranked: float
+    delta: float
+    description: str
+
+
+class BenchmarkSummary(BaseModel):
+    timestamp: str
+    evaluated_models: dict
+    total_cases: int
+    metrics: List[BenchmarkMetric]
+    category_breakdown: Optional[dict] = None
+    details: List[dict]
 
 
 # ─── Query history ───────────────────────────────────────────────────────────

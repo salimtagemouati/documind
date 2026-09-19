@@ -54,6 +54,8 @@ export const authApi = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
 
+  loginDemo: () => api.post('/auth/demo'),
+
   me: () => api.get('/auth/me'),
 }
 
@@ -85,6 +87,9 @@ export const queryApi = {
   ask: (documentId: string, question: string, maxTokens = 800) =>
     api.post('/query/', { document_id: documentId, question, max_tokens: maxTokens }),
 
+  askMulti: (documentIds: string[], question: string, maxTokens = 1000) =>
+    api.post('/query/multi', { document_ids: documentIds, question, max_tokens: maxTokens }),
+
   history: (documentId?: string, page = 1) =>
     api.get('/query/history', { params: { document_id: documentId, page } }),
 }
@@ -93,6 +98,19 @@ export const queryApi = {
 export const analyticsApi = {
   myStats: () => api.get('/analytics/me'),
   adminStats: () => api.get('/analytics/admin'),
+  evalBenchmark: () => api.get('/analytics/eval'),
+}
+
+// ─── Billing ──────────────────────────────────────────────────────────────────
+export const billingApi = {
+  /** Create Stripe checkout session → returns { checkout_url } */
+  createCheckout: () => api.post('/billing/checkout'),
+
+  /** Create Stripe customer portal session → returns { portal_url } */
+  createPortal: () => api.post('/billing/portal'),
+
+  /** Get current subscription status, tier, and usage limits */
+  getStatus: () => api.get('/billing/status'),
 }
 
 export default api
