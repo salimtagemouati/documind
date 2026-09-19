@@ -133,7 +133,7 @@ export default function AuthPage({ mode }: { mode: Mode }) {
                 gap: '8px'
               }}
             >
-              <span>🚀</span> Explore Live Demo (Instant Access)
+              <span>🚀</span> Explore as Guest (Live Demo)
             </button>
           </form>
 

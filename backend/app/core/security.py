@@ -33,10 +33,17 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 # ─── Token creation ──────────────────────────────────────────────────────────
-def create_access_token(subject: str, extra: dict = None) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-    )
+def create_access_token(
+    subject: str,
+    extra: dict = None,
+    expires_delta: timedelta = None,
+) -> str:
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+        )
     payload = {
         "sub": subject,
         "exp": expire,

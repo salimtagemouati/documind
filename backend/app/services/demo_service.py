@@ -177,19 +177,25 @@ async def ensure_demo_user(db: AsyncSession) -> User:
     """
     result = await db.execute(select(User).where(User.email == DEMO_EMAIL))
     user = result.scalar_one_or_none()
-
     if not user:
         user = User(
             email=DEMO_EMAIL,
             hashed_password=hash_password("DemoPassword123!"),
             full_name="DocuMind Demo Guest",
             role=UserRole.premium,
+            subscription_tier="pro",
+            subscription_status="active",
             is_verified=True,
             is_active=True,
         )
         db.add(user)
         await db.flush()
         logger.info("demo_user_created", user_id=str(user.id))
+    else:
+        if user.subscription_tier != "pro":
+            user.subscription_tier = "pro"
+            user.subscription_status = "active"
+            await db.flush()
 
     # Check if demo documents exist
     doc_res = await db.execute(select(Document).where(Document.user_id == user.id))

@@ -5,10 +5,13 @@ POST /api/v1/auth/login     — get tokens
 POST /api/v1/auth/refresh   — rotate access token
 GET  /api/v1/auth/me        — get current user profile
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import limiter
 from app.core.logging import get_logger
 from app.core.security import (
     create_access_token,
@@ -93,7 +96,8 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/demo", response_model=TokenResponse)
-async def login_demo(db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/hour")
+async def login_demo(request: Request, db: AsyncSession = Depends(get_db)):
     """
     Instant public demo access — zero friction, pre-seeded with sample documents.
     Allows recruiters, hiring managers, and portfolio visitors to experience DocuMind
@@ -103,14 +107,15 @@ async def login_demo(db: AsyncSession = Depends(get_db)):
     user = await ensure_demo_user(db)
     access_token = create_access_token(
         str(user.id),
-        extra={"role": user.role.value, "is_demo": True}
+        extra={"role": user.role.value, "is_demo": True},
+        expires_delta=timedelta(hours=2),
     )
     refresh_token = create_refresh_token(str(user.id))
     logger.info("demo_session_created", user_id=str(user.id))
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        expires_in=60 * 60 * 24,  # 24 hours
+        expires_in=60 * 60 * 2,  # 2 hours
     )
 
 

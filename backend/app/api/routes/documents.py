@@ -182,6 +182,12 @@ async def upload_document(
     Processing happens asynchronously in the background.
     Connect via WebSocket at /api/v1/ws/documents/{id} for real-time progress.
     """
+    if current_user.get("is_demo") or current_user.get("role") == "demo":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo accounts are read-only. Create a free account to upload your own documents.",
+        )
+
     file_bytes = await file.read()
     file_type = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
 
@@ -330,6 +336,12 @@ async def delete_document(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a document, its chunks, FAISS index, and cached data."""
+    if current_user.get("is_demo") or current_user.get("role") == "demo":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo accounts are read-only. Cannot delete sample documents.",
+        )
+
     from uuid import UUID as UUIDType
     doc = await _get_user_document(document_id, UUIDType(current_user["sub"]), db)
 
