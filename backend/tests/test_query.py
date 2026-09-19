@@ -173,3 +173,94 @@ async def test_multi_document_query(auth_client: AsyncClient, db_session, monkey
     assert "Both contracts" in data["answer"]
     assert len(data["sources"]) == 2
     assert len(data["documents_queried"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_multi_query_unauthorized_document(auth_client: AsyncClient, db_session):
+    """Verify 404 when one document belongs to another user (no existence leakage)."""
+    user2 = User(email="other_owner@example.com", hashed_password="h", full_name="Other Owner")
+    db_session.add(user2)
+    await db_session.flush()
+
+    user_result = await db_session.execute(select(User).where(User.email == "query@example.com"))
+    current_user = user_result.scalar_one()
+
+    doc1 = Document(
+        id=uuid4(), user_id=current_user.id, filename="mine.pdf", original_filename="mine.pdf",
+        file_type="pdf", file_size_bytes=100, storage_path="p1", status=DocumentStatus.ready,
+    )
+    doc2 = Document(
+        id=uuid4(), user_id=user2.id, filename="theirs.pdf", original_filename="theirs.pdf",
+        file_type="pdf", file_size_bytes=100, storage_path="p2", status=DocumentStatus.ready,
+    )
+    db_session.add_all([doc1, doc2])
+    await db_session.commit()
+
+    payload = {
+        "document_ids": [str(doc1.id), str(doc2.id)],
+        "question": "Cross query",
+    }
+    response = await auth_client.post("/api/v1/query/multi", json=payload)
+    assert response.status_code == 404
+    assert "not found or unauthorized" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_multi_query_max_documents_validation(auth_client: AsyncClient):
+    """Verify 422 Unprocessable Entity when more than 5 documents are passed."""
+    payload = {
+        "document_ids": [str(uuid4()) for _ in range(6)],
+        "question": "Too many documents query",
+    }
+    response = await auth_client.post("/api/v1/query/multi", json=payload)
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_multi_query_rerank_disabled(auth_client: AsyncClient, db_session, monkeypatch):
+    """Verify querying multiple documents with enable_rerank=False."""
+    import app.api.routes.query as query_route
+
+    user_result = await db_session.execute(select(User).where(User.email == "query@example.com"))
+    user = user_result.scalar_one()
+
+    doc1 = Document(
+        id=uuid4(), user_id=user.id, filename="d1.pdf", original_filename="d1.pdf",
+        file_type="pdf", file_size_bytes=100, storage_path="p1", status=DocumentStatus.ready,
+    )
+    doc2 = Document(
+        id=uuid4(), user_id=user.id, filename="d2.pdf", original_filename="d2.pdf",
+        file_type="pdf", file_size_bytes=100, storage_path="p2", status=DocumentStatus.ready,
+    )
+    db_session.add_all([doc1, doc2])
+    await db_session.commit()
+
+    rerank_flag_received = None
+
+    async def mock_multi_rag(*args, **kwargs):
+        nonlocal rerank_flag_received
+        rerank_flag_received = kwargs.get("enable_rerank")
+        return MultiQueryResponse(
+            question=kwargs["question"],
+            answer="Answer without rerank.",
+            sources=[],
+            documents_queried=[{"id": str(doc1.id), "name": "d1.pdf"}, {"id": str(doc2.id), "name": "d2.pdf"}],
+            model_used="gemini/gemini-3.6-flash",
+            tokens_used=80,
+            latency_ms=15,
+            reranked=False,
+            from_cache=False,
+            query_id=uuid4(),
+        )
+
+    monkeypatch.setattr(query_route, "synthesize_multi_document_query", mock_multi_rag)
+
+    payload = {
+        "document_ids": [str(doc1.id), str(doc2.id)],
+        "question": "Compare without reranking",
+        "enable_rerank": False,
+    }
+    response = await auth_client.post("/api/v1/query/multi", json=payload)
+    assert response.status_code == 200
+    assert rerank_flag_received is False
+
