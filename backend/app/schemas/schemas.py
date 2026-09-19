@@ -204,6 +204,7 @@ class BenchmarkSummary(BaseModel):
     evaluated_models: dict
     total_cases: int
     metrics: List[BenchmarkMetric]
+    category_breakdown: Optional[dict] = None
     details: List[dict]
 
 

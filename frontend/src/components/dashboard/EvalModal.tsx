@@ -84,13 +84,35 @@ export default function EvalModal({ onClose }: Props) {
               {/* Architecture Info Banner */}
               <div style={{
                 background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)',
-                borderRadius: '10px', padding: '12px 16px', display: 'flex', flexWrap: 'wrap',
-                gap: '16px', fontSize: '0.75rem', color: '#c7d2fe'
+                borderRadius: '10px', padding: '12px 16px', display: 'flex', flexDirection: 'column',
+                gap: '8px', fontSize: '0.75rem', color: '#c7d2fe'
               }}>
-                <div><strong>Stack:</strong> pgvector (HNSW) + PostgreSQL FTS</div>
-                <div><strong>Chat Model:</strong> {benchmark.evaluated_models?.chat_model}</div>
-                <div><strong>Embedding:</strong> {benchmark.evaluated_models?.embedding_model} (768d)</div>
-                <div><strong>Test Suite:</strong> {benchmark.total_cases} labeled test cases</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{
+                      padding: '2px 8px', borderRadius: '6px', fontSize: '0.65rem', fontWeight: 700,
+                      background: benchmark.evaluated_models?.in_memory_mode ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)',
+                      color: benchmark.evaluated_models?.in_memory_mode ? '#fbbf24' : '#34d399',
+                      border: `1px solid ${benchmark.evaluated_models?.in_memory_mode ? 'rgba(245,158,11,0.4)' : 'rgba(16,185,129,0.4)'}`,
+                    }}>
+                      {benchmark.evaluated_models?.in_memory_mode ? '⚡ In-Memory Evaluation' : '🛡️ pgvector Durability'}
+                    </span>
+                    <span><strong>Stack:</strong> pgvector + PostgreSQL FTS + Cross-Encoder</span>
+                  </div>
+                  {benchmark.timestamp && (
+                    <span style={{ color: '#9ca3af', fontSize: '0.7rem' }}>
+                      Run Date: {new Date(benchmark.timestamp).toLocaleDateString()} {new Date(benchmark.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', color: '#9ca3af', fontSize: '0.72rem' }}>
+                  <div>LLM: <span style={{ color: '#e0e7ff' }}>{benchmark.evaluated_models?.chat_model}</span></div>
+                  <div>Embedding: <span style={{ color: '#e0e7ff' }}>{benchmark.evaluated_models?.embedding_model} (768d)</span></div>
+                  <div>Test Cases: <span style={{ color: '#e0e7ff' }}>{benchmark.total_cases} labeled</span></div>
+                  {benchmark.summary?.baseline_avg_latency_sec && (
+                    <div>Avg Latency: <span style={{ color: '#e0e7ff' }}>{benchmark.summary.baseline_avg_latency_sec.toFixed(2)}s → {benchmark.summary.reranked_avg_latency_sec?.toFixed(2)}s</span></div>
+                  )}
+                </div>
               </div>
 
               {/* Metrics Grid */}
@@ -130,11 +152,24 @@ export default function EvalModal({ onClose }: Props) {
                 background: '#181b26', border: '1px solid rgba(255,255,255,0.07)',
                 borderRadius: '12px', padding: '16px'
               }}>
-                <h3 style={{ margin: '0 0 14px', fontSize: '0.85rem', fontWeight: 600, color: '#e5e7eb' }}>
-                  Retrieval Quality Delta: Vector Search vs. Re-ranking
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {benchmark.metrics?.filter((m: any) => m.name.includes('Precision') || m.name.includes('Groundedness') || m.name.includes('Recall')).map((m: any, i: number) => (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 600, color: '#e5e7eb' }}>
+                    Retrieval Quality Comparison: Baseline vs. Two-Stage Reranked
+                  </h3>
+                  <div style={{ display: 'flex', gap: '14px', fontSize: '0.7rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '10px', height: '10px', background: '#4b5563', borderRadius: '2px' }} />
+                      <span style={{ color: '#9ca3af' }}>Baseline Dense Vector</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '10px', height: '10px', background: 'linear-gradient(90deg, #6366f1, #10b981)', borderRadius: '2px' }} />
+                      <span style={{ color: '#34d399', fontWeight: 600 }}>Two-Stage Hybrid + Rerank</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {benchmark.metrics?.map((m: any, i: number) => (
                     <div key={i}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '4px' }}>
                         <span style={{ color: '#d1d5db' }}>{m.name}</span>
@@ -142,16 +177,15 @@ export default function EvalModal({ onClose }: Props) {
                           {(m.baseline * 100).toFixed(0)}% → {(m.reranked * 100).toFixed(0)}%
                         </span>
                       </div>
-                      <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
-                        <div style={{
-                          height: '100%', width: `${m.baseline * 100}%`,
-                          background: '#4b5563', position: 'absolute', left: 0
-                        }} />
-                        <div style={{
-                          height: '100%', width: `${m.reranked * 100}%`,
-                          background: 'linear-gradient(90deg, #6366f1, #10b981)',
-                          position: 'absolute', left: 0, opacity: 0.85
-                        }} />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {/* Baseline bar */}
+                        <div style={{ height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.max(m.baseline * 100, 2)}%`, background: '#64748b', borderRadius: '3px' }} />
+                        </div>
+                        {/* Reranked bar */}
+                        <div style={{ height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${Math.max(m.reranked * 100, 2)}%`, background: 'linear-gradient(90deg, #6366f1, #10b981)', borderRadius: '3px' }} />
+                        </div>
                       </div>
                     </div>
                   ))}

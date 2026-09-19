@@ -5,7 +5,7 @@ GET /api/v1/analytics/admin   — system-wide stats (admin only)
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,22 +25,30 @@ async def get_eval_benchmark():
     """
     Returns empirical quality benchmark metrics comparing Baseline Vector Search vs.
     Two-Stage Hybrid Search with Re-ranking on precision@K, recall@K, MRR, and groundedness.
-    Accessible publicly to demonstrate verifiable RAG quality.
+    Serves cached benchmark report without recomputing live. Returns 404 if not found.
     """
-    from pathlib import Path
     import json
-    from app.eval.evaluator import RAGEvaluator, REPORT_FILE
+    from pathlib import Path
+    from app.eval.evaluator import REPORT_FILE
 
-    if REPORT_FILE.exists():
-        try:
-            data = json.loads(REPORT_FILE.read_text())
-            return BenchmarkSummary(**data)
-        except Exception:
-            pass
+    candidate_paths = [
+        REPORT_FILE,
+        Path(__file__).parents[2] / "benchmark_report.json",
+        Path(__file__).parents[3] / "docs" / "benchmark_report.json",
+    ]
 
-    evaluator = RAGEvaluator()
-    summary = await evaluator.run_evaluation()
-    return BenchmarkSummary(**summary)
+    for p in candidate_paths:
+        if p.exists():
+            try:
+                data = json.loads(p.read_text())
+                return BenchmarkSummary(**data)
+            except Exception as e:
+                logger.warning("benchmark_report_parse_error", path=str(p), error=str(e))
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Benchmark report not found. Please run the evaluation suite first.",
+    )
 
 
 @router.get("/me", response_model=UserStats)
@@ -116,22 +124,3 @@ async def get_admin_stats(
         documents_today=docs_today,
         queries_today=queries_today,
     )
-
-
-@router.get("/eval")
-async def get_evaluation_benchmark():
-    """
-    Returns the quantitative RAG evaluation benchmark results.
-    Publicly accessible to demonstrate portfolio-grade rigor.
-    """
-    import json
-    from app.eval.evaluator import REPORT_FILE, RAGEvaluator
-
-    if REPORT_FILE.exists():
-        try:
-            return json.loads(REPORT_FILE.read_text())
-        except Exception:
-            pass
-
-    evaluator = RAGEvaluator()
-    return await evaluator.run_evaluation()
