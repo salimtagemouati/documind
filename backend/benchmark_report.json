@@ -1,0 +1,145 @@
+{
+  "timestamp": "2026-09-19T13:12:48.809434+00:00",
+  "mode": "in-memory (numpy cosine similarity, does not test pgvector HNSW)",
+  "evaluated_models": {
+    "chat_model": "gemini/gemini-3.6-flash",
+    "embedding_model": "gemini/gemini-embedding-001"
+  },
+  "parameters": {
+    "k": 5,
+    "candidates": 15,
+    "enable_rerank": true,
+    "cases_evaluated": 3
+  },
+  "stats": {
+    "llm_calls_made": 9,
+    "baseline_avg_latency_sec": 4.38,
+    "reranked_avg_latency_sec": 2.8
+  },
+  "metrics": [
+    {
+      "name": "Retrieval Precision@5",
+      "baseline": 1.0,
+      "reranked": 1.0,
+      "delta": 0.0,
+      "description": "Proportion of retrieved chunks containing verifiable ground truth evidence."
+    },
+    {
+      "name": "Retrieval Recall@5",
+      "baseline": 1.0,
+      "reranked": 1.0,
+      "delta": 0.0,
+      "description": "Coverage of required ground truth facts across all retrieved context."
+    },
+    {
+      "name": "Mean Reciprocal Rank (MRR)",
+      "baseline": 1.0,
+      "reranked": 1.0,
+      "delta": 0.0,
+      "description": "Reciprocal rank of the first chunk providing direct answer evidence."
+    },
+    {
+      "name": "Answer Groundedness",
+      "baseline": 0.5,
+      "reranked": 0.333,
+      "delta": -0.167,
+      "description": "Adherence of generated assertions strictly to retrieved context (hallucination resistance)."
+    },
+    {
+      "name": "Out-of-Domain Refusal Accuracy",
+      "baseline": 1.0,
+      "reranked": 1.0,
+      "delta": 0.0,
+      "description": "Accuracy in refusing unanswerable questions without fabricating claims."
+    }
+  ],
+  "category_breakdown": {
+    "single_fact": {
+      "count": 2,
+      "baseline_precision": 1.0,
+      "reranked_precision": 1.0,
+      "baseline_mrr": 1.0,
+      "reranked_mrr": 1.0
+    },
+    "multi_hop": {
+      "count": 1,
+      "baseline_precision": 1.0,
+      "reranked_precision": 1.0,
+      "baseline_mrr": 1.0,
+      "reranked_mrr": 1.0
+    },
+    "adversarial_negative": {
+      "count": 0,
+      "baseline_refusal": 1.0,
+      "reranked_refusal": 1.0
+    }
+  },
+  "details": [
+    {
+      "case_id": "case_01_liability_cap",
+      "question": "What is the maximum aggregate liability dollar cap under the contract?",
+      "category": "single_fact",
+      "is_negative": false,
+      "baseline": {
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0,
+        "groundedness": 0.5,
+        "latency_sec": 2.47,
+        "answer_preview": "$500,000. Keep"
+      },
+      "reranked": {
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0,
+        "groundedness": 0.0,
+        "latency_sec": 3.37,
+        "answer_preview": "Based on the provided context, the aggregate liability dollar cap"
+      }
+    },
+    {
+      "case_id": "case_02_uptime_sla",
+      "question": "What monthly uptime percentage is guaranteed and what credit applies if uptime is 96%?",
+      "category": "single_fact",
+      "is_negative": false,
+      "baseline": {
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0,
+        "groundedness": 1.0,
+        "latency_sec": 2.84,
+        "answer_preview": "Based on Section 2 of the provided document:"
+      },
+      "reranked": {
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0,
+        "groundedness": 0.0,
+        "latency_sec": 2.48,
+        "answer_preview": "Based on the provided text:"
+      }
+    },
+    {
+      "case_id": "case_03_termination_notice",
+      "question": "What are the notice requirements for termination for convenience versus material breach?",
+      "category": "multi_hop",
+      "is_negative": false,
+      "baseline": {
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0,
+        "groundedness": 0.0,
+        "latency_sec": 7.83,
+        "answer_preview": "Based on the provided context:\n\n* **Termination"
+      },
+      "reranked": {
+        "precision_at_k": 1.0,
+        "recall_at_k": 1.0,
+        "mrr": 1.0,
+        "groundedness": 1.0,
+        "latency_sec": 2.53,
+        "answer_preview": "Based on Section 6 of the provided agreement"
+      }
+    }
+  ]
+}
