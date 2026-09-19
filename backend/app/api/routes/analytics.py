@@ -23,8 +23,8 @@ logger = get_logger(__name__)
 @router.get("/eval", response_model=BenchmarkSummary)
 async def get_eval_benchmark():
     """
-    Returns empirical quality benchmark metrics comparing Baseline Vector Search vs.
-    Two-Stage Hybrid Search with Re-ranking on precision@K, recall@K, MRR, and groundedness.
+    Returns the latest stored benchmark artifact. Legacy artifacts are explicitly
+    marked unvalidated when they predate the current metric methodology.
     Serves cached benchmark report without recomputing live. Returns 404 if not found.
     """
     import json
@@ -43,8 +43,12 @@ async def get_eval_benchmark():
             try:
                 data = json.loads(p.read_text())
                 return BenchmarkSummary(**data)
-            except Exception as e:
-                logger.warning("benchmark_report_parse_error", path=str(p), error=str(e))
+            except Exception as exc:
+                logger.warning(
+                    "benchmark_report_parse_error",
+                    path=str(p),
+                    error_type=type(exc).__name__,
+                )
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,

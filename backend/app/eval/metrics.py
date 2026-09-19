@@ -12,10 +12,16 @@ import re
 from typing import Sequence
 
 
-def precision_at_k(retrieved_contents: Sequence[str], required_keywords: Sequence[str]) -> float:
+def precision_at_k(
+    retrieved_contents: Sequence[str],
+    required_keywords: Sequence[str],
+    k: int,
+) -> float:
     """
     Computes Precision@K: Proportion of retrieved chunks that contain relevant ground truth facts.
     """
+    if k <= 0:
+        raise ValueError("k must be greater than zero")
     if not retrieved_contents:
         return 0.0
     if not required_keywords:
@@ -24,12 +30,12 @@ def precision_at_k(retrieved_contents: Sequence[str], required_keywords: Sequenc
     relevant_count = 0
     req_lower = [k.lower() for k in required_keywords]
 
-    for chunk in retrieved_contents:
+    for chunk in retrieved_contents[:k]:
         chunk_lower = chunk.lower()
         if any(k in chunk_lower for k in req_lower):
             relevant_count += 1
 
-    return round(relevant_count / len(retrieved_contents), 4)
+    return round(relevant_count / k, 4)
 
 
 def recall_at_k(retrieved_contents: Sequence[str], required_keywords: Sequence[str]) -> float:
@@ -70,11 +76,16 @@ def check_refusal(answer: str) -> bool:
         "not found in the document",
         "not found",
         "not mentioned",
+        "no mention",
         "does not contain",
         "no information",
         "couldn't find",
         "cannot find",
         "is not provided",
+        "i don't know",
+        "i do not know",
+        "insufficient context",
+        "cannot be determined from",
     ]
     ans_lower = answer.lower()
     return any(p in ans_lower for p in refusal_phrases)

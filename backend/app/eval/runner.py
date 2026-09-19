@@ -2,7 +2,7 @@
 DocuMind Scientific RAG Evaluation CLI Runner
 
 Usage:
-  python -m app.eval.runner [--cases N] [--k 5] [--candidates 15] [--no-rerank-run] [--in-memory] [--out-dir docs/]
+  python -m app.eval.runner [--cases N] [--k 5] [--candidates 15] [--no-rerank-run] [--out-dir docs/]
 
 Quantitatively benchmarks Run A (Vector Baseline) vs. Run B (Two-Stage Hybrid + Re-ranking).
 """
@@ -15,12 +15,6 @@ from pathlib import Path
 
 # Verify and synchronize API Key
 api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-if not api_key:
-    # Check if key was passed as trailing argument
-    for arg in sys.argv[1:]:
-        if not arg.startswith("-") and len(arg) > 20:
-            api_key = arg
-            break
 
 if not api_key:
     print("ERROR: Neither GEMINI_API_KEY nor GOOGLE_API_KEY environment variable is set.", file=sys.stderr)
@@ -82,7 +76,7 @@ def generate_markdown_report(summary: dict) -> str:
         "",
         "Most portfolio RAG applications claim retrieval accuracy without measurable proof. DocuMind implements an empirical evaluation harness with ground-truth labeled benchmark queries spanning SaaS Legal Contracts, Distributed Database Architecture, and Financial Performance Reports.",
         "",
-        "By transitioning from pure dense vector search to **Two-Stage Retrieval (Candidate Retrieval + Cross-Encoder / LLM Re-ranking)**, the system demonstrates the following empirical metrics:",
+        "This in-memory harness compares dense retrieval with a larger dense candidate pool followed by one batched LLM re-ranking call. It does not exercise PostgreSQL full-text search or pgvector indexes.",
         "",
         "### 1. Global Benchmark Metrics (Run A vs. Run B)",
         "",
@@ -126,23 +120,23 @@ def generate_markdown_report(summary: dict) -> str:
             "#### Adversarial & Out-of-Domain Query Handling",
             f"- **Negative Refusal Accuracy (Baseline)**: {ad['baseline_refusal']:.1%}",
             f"- **Negative Refusal Accuracy (Re-ranked)**: {ad['reranked_refusal']:.1%}",
-            "- Both stages properly refuse to invent contract terms or financial figures not present in the ingested texts.",
+            "- A refusal score below 100% means the pipeline answered at least one unanswerable case and must not be described as reliably refusing unsupported questions.",
         ])
 
     lines.extend([
         "",
         "## Technical Analysis: Why Two-Stage Retrieval Improves Quality",
         "",
-        "1. **Elimination of Semantic Bleed**: Dense embeddings alone often pull adjacent clauses (e.g. general indemnity clauses when asking specifically about the aggregate dollar cap). Re-ranking acts as an information filter that pushes the exact relevant paragraph to rank #1.",
-        "2. **Higher Mean Reciprocal Rank (MRR)**: Moving the crucial chunk to position #1 substantially improves LLM generation quality because language models exhibit 'lost-in-the-middle' attention decay on long contexts.",
-        "3. **Zero Startup Index Wipe**: Switching from ephemeral local FAISS to durable PostgreSQL vector persistence ensures vector embeddings are immediately and durably available across multi-tenant worker processes.",
+        "1. **Candidate ranking**: The enhanced run scores a larger dense candidate pool in one batched LLM request before selecting the final context.",
+        "2. **MRR interpretation**: MRR measures where this harness first finds a required keyword. It is a lexical proxy, not proof of answer quality.",
         "",
         "## Methodological Limitations",
         "",
         "> [!NOTE]",
         "> **Methodological Transparency & Limitations**:",
         "> - **Sample Size**: The benchmark evaluates 15 curated gold-standard cases across 3 document domains. While representative of high-stakes enterprise use cases, larger corpora (hundreds of documents) may introduce more retrieval variance.",
-        "> - **LLM-as-a-Judge**: Groundedness and assertion verification rely in part on model scoring and token overlap density, which carries slight linguistic bias.",
+        "> - **Groundedness proxy**: Groundedness is computed with lexical token overlap. No independent LLM judge or human adjudication is used.",
+        "> - **Retrieval mode**: The harness uses NumPy cosine similarity in memory. It does not validate pgvector, HNSW, PostgreSQL FTS, RRF, or multi-tenant database filters.",
         "> - **Latency Trade-Off**: Two-stage re-ranking adds ~1.0-1.5s of latency due to the second-stage scoring call. DocuMind optimizes this by batching candidates and restricting the pool to top-15 candidates.",
         "",
     ])
@@ -156,7 +150,6 @@ async def main():
     parser.add_argument("--candidates", type=int, default=15, help="Initial candidate pool for re-ranking (default: 15)")
     parser.add_argument("--cases", type=int, default=None, help="Number of benchmark cases to evaluate (default: all)")
     parser.add_argument("--no-rerank-run", action="store_true", help="Disable re-ranking in Run B")
-    parser.add_argument("--in-memory", action="store_true", default=True, help="Run in in-memory evaluation mode")
     parser.add_argument("--out-dir", type=str, default="docs", help="Output directory for reports (default: docs)")
 
     args = parser.parse_args()
@@ -178,10 +171,11 @@ async def main():
 
     try:
         summary = await evaluator.run_evaluation(cases_limit=args.cases)
-    except Exception as e:
-        print(f"\n❌ Evaluation failed: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc()
+    except Exception as exc:
+        print(
+            f"\nEvaluation failed ({type(exc).__name__}). Check provider credentials, quota, and network access.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     print("\n" + "=" * 72)
