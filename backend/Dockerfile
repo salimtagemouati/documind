@@ -36,12 +36,12 @@ ENV PYTHONPATH=/app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-EXPOSE 8000
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
-# Uvicorn with 2 workers for production concurrency
+# One async worker avoids duplicate startup state and reduces cold-start memory.
 # WebSocket connections require --ws websockets (included via uvicorn[standard])
-# Shell form allows $PORT expansion (Render injects PORT dynamically)
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2
+# Shell form allows expansion of the PORT injected by Cloud Run.
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1

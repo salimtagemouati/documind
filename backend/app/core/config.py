@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
-    # Render env vars might be parsed as strings by pydantic_settings JSON decode
+    # Deployment env vars might be parsed as strings by pydantic_settings JSON decode
     # if we use `List[str]`, so we tell pydantic_settings not to automatically parse
     # it as JSON by making the type hint `str | List[str]` initially, then forcing it.
     ALLOWED_ORIGINS: Any = ["http://localhost:5173", "https://documind.vercel.app"]

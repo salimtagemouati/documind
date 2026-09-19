@@ -27,7 +27,6 @@ services:
       - ./backend/.env
     volumes:
       - ./backend/app:/app/app        # Hot reload in dev
-      - faiss_data:/app/data          # Persist FAISS indexes
     depends_on:
       redis:
         condition: service_healthy
@@ -74,6 +73,4 @@ services:
 
 volumes:
   redis_data:
-    driver: local
-  faiss_data:
     driver: local
