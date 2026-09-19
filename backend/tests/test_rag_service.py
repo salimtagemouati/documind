@@ -150,3 +150,91 @@ async def test_embedding_dimensions_and_unit_norm():
         assert len(vec) == settings.EMBEDDING_DIM
         assert np.isclose(np.linalg.norm(vec), 1.0, atol=1e-4)
 
+
+@pytest.mark.asyncio
+async def test_rerank_chunks_fallback_on_invalid_json():
+    """Verify that when LLM produces invalid JSON, rerank_chunks falls back to composite scoring without raising."""
+    from unittest.mock import MagicMock, patch
+    from app.services.rerank_service import rerank_chunks
+
+    candidates = [
+        {"content": "Irrelevant text about gardening", "chunk_index": 0, "similarity_score": 0.8},
+        {"content": "Direct answer about liability dollar caps $500,000", "chunk_index": 1, "similarity_score": 0.75},
+    ]
+
+    # Mock litellm returning broken non-JSON text
+    mock_choice = MagicMock()
+    mock_choice.message.content = "I am an AI and here is my freeform analysis without JSON."
+    mock_resp = MagicMock(choices=[mock_choice])
+
+    with patch("litellm.acompletion", return_value=mock_resp):
+        reranked = await rerank_chunks(query="What is the liability cap?", chunks=candidates, top_k=2)
+
+    assert len(reranked) == 2
+    # Composite fallback gives higher score to text with exact keyword overlap ("liability", "cap")
+    assert "liability dollar caps" in reranked[0]["content"]
+    assert "rerank_score" in reranked[0]
+
+
+@pytest.mark.asyncio
+async def test_rerank_chunks_with_fences_and_commentary():
+    """Verify robust extraction when JSON array is wrapped in markdown code blocks or commentary."""
+    from unittest.mock import MagicMock, patch
+    from app.services.rerank_service import rerank_chunks
+
+    candidates = [
+        {"content": "Candidate 0", "chunk_index": 0, "similarity_score": 0.5},
+        {"content": "Candidate 1", "chunk_index": 1, "similarity_score": 0.5},
+    ]
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Here are your scores:\n```json\n[{\"id\": 0, \"score\": 2.0}, {\"id\": 1, \"score\": 9.5}]\n```\nHope that helps!"
+    mock_resp = MagicMock(choices=[mock_choice])
+
+    with patch("litellm.acompletion", return_value=mock_resp):
+        reranked = await rerank_chunks(query="test query", chunks=candidates, top_k=2)
+
+    assert len(reranked) == 2
+    assert reranked[0]["chunk_index"] == 1
+    assert reranked[0]["rerank_score"] > reranked[1]["rerank_score"]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_user_isolation(db_session):
+    """Verify that retrieve_similar_chunks strictly respects document_id filtering preventing cross-tenant leakage."""
+    user1 = User(email="tenant1@example.com", hashed_password="h", full_name="User 1")
+    user2 = User(email="tenant2@example.com", hashed_password="h", full_name="User 2")
+    db_session.add_all([user1, user2])
+    await db_session.flush()
+
+    doc1_id = uuid4()
+    doc2_id = uuid4()
+
+    doc1 = Document(
+        id=doc1_id, user_id=user1.id, filename="tenant1.txt", original_filename="tenant1.txt",
+        file_type="txt", file_size_bytes=50, storage_path="p1", status=DocumentStatus.ready,
+    )
+    doc2 = Document(
+        id=doc2_id, user_id=user2.id, filename="tenant2.txt", original_filename="tenant2.txt",
+        file_type="txt", file_size_bytes=50, storage_path="p2", status=DocumentStatus.ready,
+    )
+    db_session.add_all([doc1, doc2])
+    await db_session.commit()
+
+    await build_document_index(db_session, doc1_id, [{"content": "Secret credentials for tenant 1", "chunk_index": 0, "token_count": 5}])
+    await build_document_index(db_session, doc2_id, [{"content": "Secret credentials for tenant 2", "chunk_index": 0, "token_count": 5}])
+
+    # Querying tenant1's document should never return tenant2's chunks
+    retrieved = await retrieve_similar_chunks(
+        db=db_session,
+        document_id=doc1_id,
+        query="Secret credentials",
+        top_k=5,
+        threshold=0.0,
+        enable_hybrid=False,
+    )
+    assert len(retrieved) == 1
+    assert retrieved[0]["document_id"] == doc1_id
+    assert "tenant 1" in retrieved[0]["content"]
+
+

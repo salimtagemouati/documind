@@ -50,7 +50,7 @@ async def rerank_chunks(
     if not chunks:
         return []
 
-    if len(chunks) <= top_k or not settings.ENABLE_RERANKING:
+    if not settings.ENABLE_RERANKING or len(chunks) == 1:
         for c in chunks:
             c.setdefault("rerank_score", c.get("similarity_score", 0.0))
         return chunks[:top_k]
@@ -98,11 +98,13 @@ Return ONLY a valid JSON array of objects with "id" (integer) and "score" (float
         response = await call_with_limits(lambda: litellm.acompletion(**kwargs))
         raw_text = response.choices[0].message.content or ""
 
-        # Clean markdown code fences if present
-        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text.strip())
-        raw_text = re.sub(r"\s*```$", "", raw_text.strip())
+        # Extract JSON array from output even if surrounded by commentary
+        json_match = re.search(r"(\[.*\])", raw_text, re.DOTALL)
+        cleaned_text = json_match.group(1) if json_match else raw_text.strip()
+        cleaned_text = re.sub(r"^```(?:json)?\s*", "", cleaned_text)
+        cleaned_text = re.sub(r"\s*```$", "", cleaned_text)
 
-        scores_list = json.loads(raw_text)
+        scores_list = json.loads(cleaned_text)
         score_map = {item["id"]: float(item["score"]) for item in scores_list if "id" in item and "score" in item}
 
         ranked = []
