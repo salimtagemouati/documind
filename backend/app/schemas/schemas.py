@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -53,6 +53,7 @@ class UserPublic(BaseModel):
     documents_processed: int
     queries_made: int
     created_at: datetime
+    is_demo: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -151,6 +152,13 @@ class MultiQueryRequest(BaseModel):
     max_tokens: int = Field(default=1000, ge=100, le=4000)
     enable_rerank: bool = Field(default=True)
 
+    @field_validator("document_ids")
+    @classmethod
+    def document_ids_must_be_unique(cls, value: List[UUID]) -> List[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("document_ids must be unique")
+        return value
+
 
 class MultiSourceChunk(BaseModel):
     content: str
@@ -201,11 +209,22 @@ class BenchmarkMetric(BaseModel):
 
 class BenchmarkSummary(BaseModel):
     timestamp: str
+    mode: str
+    methodology_version: str = "legacy-v1"
+    results_validated: bool = False
     evaluated_models: dict
-    total_cases: int
+    parameters: dict
+    stats: dict
+    total_cases: int = 0
     metrics: List[BenchmarkMetric]
     category_breakdown: Optional[dict] = None
     details: List[dict]
+
+    @model_validator(mode="after")
+    def derive_total_cases(self):
+        if not self.total_cases:
+            self.total_cases = len(self.details)
+        return self
 
 
 # ─── Query history ───────────────────────────────────────────────────────────

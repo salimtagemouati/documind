@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.core.security import get_current_user
+from app.core.security import ensure_not_demo, get_current_user
 from app.db.database import get_db
 from app.services.stripe_service import (
     create_checkout_session,
@@ -34,6 +34,7 @@ async def create_checkout(
     Create a Stripe Checkout session for upgrading to Pro.
     Returns a URL to redirect the user to Stripe's hosted checkout page.
     """
+    ensure_not_demo(current_user)
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -60,6 +61,7 @@ async def manage_subscription(
     Create a Stripe Customer Portal session for managing billing.
     The portal allows users to update payment methods, cancel, etc.
     """
+    ensure_not_demo(current_user)
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -119,5 +121,5 @@ async def stripe_webhook(
         result = await handle_webhook(payload, sig_header, db)
         return result
     except ValueError as e:
-        logger.error("webhook_error", error=str(e))
+        logger.error("webhook_error", error_type=type(e).__name__)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

@@ -4,7 +4,7 @@ DocuMind FastAPI Application — main entrypoint.
 Responsibilities:
 - Register all routers
 - Configure CORS, rate limiting, error handlers
-- Lifespan hooks (DB init, Redis ping, FAISS cleanup)
+- Lifespan hooks (database initialization and Redis connectivity)
 - Health check endpoint
 """
 from contextlib import asynccontextmanager
@@ -73,7 +73,7 @@ app.add_middleware(
 # ─── Global error handlers ────────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error("unhandled_exception", path=request.url.path, error=str(exc))
+    logger.error("unhandled_exception", path=request.url.path, error_type=type(exc).__name__)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An internal error occurred. Our team has been notified."},

@@ -86,7 +86,7 @@ async def init_db() -> None:
             await conn.execute(text("SELECT 1"))
         logger.info("database_connected", url=settings.DATABASE_URL.split("@")[-1])
     except Exception as e:
-        logger.error("database_connection_failed", error=str(e))
+        logger.error("database_connection_failed", error_type=type(e).__name__)
         raise
 
 

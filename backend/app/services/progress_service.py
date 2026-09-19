@@ -48,7 +48,7 @@ async def _get_redis():
             decode_responses=True,
         )
     except Exception as e:
-        logger.warning("redis_pubsub_unavailable", error=str(e))
+        logger.warning("redis_pubsub_unavailable", error_type=type(e).__name__)
         return None
 
 
@@ -80,7 +80,7 @@ async def publish_progress(
                 await r.close()
                 return
         except Exception as e:
-            logger.warning("redis_publish_failed", error=str(e))
+            logger.warning("redis_publish_failed", error_type=type(e).__name__)
 
     # Fallback: in-memory async queues
     if document_id in _memory_channels:
@@ -123,7 +123,7 @@ async def subscribe_progress(document_id: str) -> AsyncGenerator[str, None]:
                     await r.close()
                 return
         except Exception as e:
-            logger.warning("redis_subscribe_failed", error=str(e))
+            logger.warning("redis_subscribe_failed", error_type=type(e).__name__)
 
     # Fallback: in-memory async queue
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)

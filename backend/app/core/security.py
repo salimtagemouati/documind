@@ -54,15 +54,20 @@ def create_access_token(
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def create_refresh_token(subject: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
-        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+def create_refresh_token(
+    subject: str,
+    extra: dict = None,
+    expires_delta: timedelta = None,
+) -> str:
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     payload = {
         "sub": subject,
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "type": "refresh",
+        **(extra or {}),
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
@@ -73,10 +78,10 @@ def decode_token(token: str) -> dict:
             token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
         )
         return payload
-    except JWTError as e:
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Token invalid or expired: {e}",
+            detail="Token invalid or expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -96,6 +101,15 @@ async def get_current_user(
             detail="Expected access token",
         )
     return payload
+
+
+def ensure_not_demo(current_user: dict) -> None:
+    """Reject state-changing operations for public demo sessions."""
+    if current_user.get("is_demo"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo accounts are read-only. Create a free account to continue.",
+        )
 
 
 async def get_current_admin(

@@ -110,7 +110,11 @@ async def login_demo(request: Request, db: AsyncSession = Depends(get_db)):
         extra={"role": user.role.value, "is_demo": True},
         expires_delta=timedelta(hours=2),
     )
-    refresh_token = create_refresh_token(str(user.id))
+    refresh_token = create_refresh_token(
+        str(user.id),
+        extra={"role": user.role.value, "is_demo": True},
+        expires_delta=timedelta(hours=2),
+    )
     logger.info("demo_session_created", user_id=str(user.id))
     return TokenResponse(
         access_token=access_token,
@@ -132,10 +136,21 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    access_token = create_access_token(str(user.id), extra={"role": user.role.value})
-    new_refresh = create_refresh_token(str(user.id))
+    is_demo = bool(token_data.get("is_demo"))
+    token_lifetime = timedelta(hours=2) if is_demo else None
+    token_extra = {"role": user.role.value, **({"is_demo": True} if is_demo else {})}
+    access_token = create_access_token(
+        str(user.id), extra=token_extra, expires_delta=token_lifetime
+    )
+    new_refresh = create_refresh_token(
+        str(user.id), extra=token_extra, expires_delta=token_lifetime
+    )
 
-    return TokenResponse(access_token=access_token, refresh_token=new_refresh, expires_in=60 * 60)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh,
+        expires_in=60 * 60 * 2 if is_demo else 60 * 60,
+    )
 
 
 @router.get("/me", response_model=UserPublic)
@@ -149,4 +164,6 @@ async def get_me(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return UserPublic.model_validate(user)
+    profile = UserPublic.model_validate(user)
+    profile.is_demo = bool(current_user.get("is_demo"))
+    return profile

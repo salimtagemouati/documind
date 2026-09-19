@@ -73,7 +73,7 @@ async def get_cached_answer(document_id: str, question: str) -> Optional[dict]:
                 logger.debug("cache_hit", key=key)
                 return json.loads(val)
     except Exception as e:
-        logger.warning("redis_cache_get_failed", error=str(e))
+        logger.warning("redis_cache_get_failed", error_type=type(e).__name__)
     val = _memory_cache.get(key)
     if val:
         return val
@@ -89,7 +89,7 @@ async def set_cached_answer(document_id: str, question: str, data: dict) -> None
             logger.debug("cache_set", key=key, ttl=settings.CACHE_TTL_SECONDS)
             return
     except Exception as e:
-        logger.warning("redis_cache_set_failed", error=str(e))
+        logger.warning("redis_cache_set_failed", error_type=type(e).__name__)
     _memory_cache[key] = data
 
 
@@ -102,7 +102,7 @@ async def get_cached_analysis(document_id: str, analysis_type: str) -> Optional[
             val = await r.get(key)
             return json.loads(val) if val else None
     except Exception as e:
-        logger.warning("redis_cache_get_failed", error=str(e))
+        logger.warning("redis_cache_get_failed", error_type=type(e).__name__)
     return _memory_cache.get(key)
 
 
@@ -114,7 +114,7 @@ async def set_cached_analysis(document_id: str, analysis_type: str, data: dict) 
             await r.setex(key, settings.CACHE_TTL_SECONDS, json.dumps(data))
             return
     except Exception as e:
-        logger.warning("redis_cache_set_failed", error=str(e))
+        logger.warning("redis_cache_set_failed", error_type=type(e).__name__)
     _memory_cache[key] = data
 
 
@@ -129,7 +129,7 @@ async def invalidate_document_cache(document_id: str) -> None:
                 await r.delete(*keys)
                 logger.info("cache_invalidated", document_id=document_id, keys=len(keys))
     except Exception as e:
-        logger.warning("redis_cache_invalidate_failed", error=str(e))
+        logger.warning("redis_cache_invalidate_failed", error_type=type(e).__name__)
 
     to_delete = [k for k in _memory_cache if document_id in k]
     for k in to_delete:

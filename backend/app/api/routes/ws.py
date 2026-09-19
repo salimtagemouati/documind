@@ -162,7 +162,7 @@ async def document_progress_ws(
     except WebSocketDisconnect:
         logger.info("ws_disconnected", document_id=document_id)
     except Exception as e:
-        logger.error("ws_error", document_id=document_id, error=str(e))
+        logger.error("ws_error", document_id=document_id, error_type=type(e).__name__)
         try:
             await websocket.send_json({
                 "stage": "error",

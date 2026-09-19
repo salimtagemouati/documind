@@ -127,6 +127,6 @@ async def call_with_limits(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -
                             "llm_rate_limit_retry",
                             attempt=attempt.retry_state.attempt_number,
                             retry_delay_detected=delay,
-                            error=str(e)[:150],
+                            error_type=type(e).__name__,
                         )
                     raise

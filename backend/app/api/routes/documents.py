@@ -67,7 +67,7 @@ async def process_document_pipeline(document_id: UUID, file_bytes: bytes, db_ses
     1. Extract text from file
     2. Chunk text into RAG-ready segments
     3. Store chunks in DB
-    4. Build FAISS vector index
+    4. Persist pgvector embeddings
     5. Run AI analysis (summary, entities, sentiment, keywords)
     6. Update document status → ready
     """
@@ -158,7 +158,7 @@ async def process_document_pipeline(document_id: UUID, file_bytes: bytes, db_ses
             logger.info("pipeline_complete", document_id=doc_id_str)
 
         except Exception as e:
-            logger.error("pipeline_failed", document_id=doc_id_str, error=str(e))
+            logger.error("pipeline_failed", document_id=doc_id_str, error_type=type(e).__name__)
             doc.status = DocumentStatus.failed
             doc.error_message = str(e)[:500]
             await db.commit()
@@ -216,7 +216,7 @@ async def upload_document(
             file_options={"content-type": file.content_type or "application/octet-stream"},
         )
     except Exception as e:
-        logger.error("storage_upload_failed", error=str(e))
+        logger.error("storage_upload_failed", error_type=type(e).__name__)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="File upload failed")
 
     # Create DB record
@@ -335,7 +335,7 @@ async def delete_document(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a document, its chunks, FAISS index, and cached data."""
+    """Delete a document, its cascaded chunks, and cached data."""
     if current_user.get("is_demo") or current_user.get("role") == "demo":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -349,9 +349,9 @@ async def delete_document(
     try:
         database.get_supabase_admin().storage.from_(settings.SUPABASE_BUCKET).remove([doc.storage_path])
     except Exception as e:
-        logger.warning("storage_delete_failed", error=str(e))
+        logger.warning("storage_delete_failed", error_type=type(e).__name__)
 
-    # Delete FAISS index
+    # pgvector chunks are removed by the database cascade.
     delete_document_index(document_id)
 
     # Invalidate cache

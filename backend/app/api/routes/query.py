@@ -6,10 +6,12 @@ GET  /api/v1/query/history   — get user's query history
 import uuid
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import litellm
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.limiter import exempt_non_demo_request, limiter
 from app.core.logging import get_logger
 from app.core.security import get_current_user
 from app.db.database import get_db
@@ -31,7 +33,9 @@ logger = get_logger(__name__)
 
 
 @router.post("/", response_model=QueryResponse)
+@limiter.limit("10/hour", exempt_when=exempt_non_demo_request)
 async def query_document(
+    request: Request,
     payload: QueryRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -76,20 +80,42 @@ async def query_document(
         return QueryResponse(**cached)
 
     # ── Tier enforcement: check daily query limit (only for non-cached) ───
-    try:
-        await check_query_limit(str(user_id), db)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+    is_demo = bool(current_user.get("is_demo"))
+    if not is_demo:
+        try:
+            await check_query_limit(str(user_id), db)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
     # Run RAG pipeline with pgvector and two-stage re-ranking
-    response = await answer_question(
-        document_id=payload.document_id,
-        question=payload.question,
-        query_id=query_id,
-        filename=doc.original_filename,
-        db=db,
-        max_tokens=payload.max_tokens,
-    )
+    try:
+        response = await answer_question(
+            document_id=payload.document_id,
+            user_id=user_id,
+            question=payload.question,
+            query_id=query_id,
+            filename=doc.original_filename,
+            db=db,
+            max_tokens=payload.max_tokens,
+        )
+    except litellm.RateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI service rate limit reached. Please try again later.",
+        )
+    except litellm.Timeout:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="AI service timed out. Please try again later.",
+        )
+    except litellm.ServiceUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service is temporarily unavailable. Please try again later.",
+        )
+
+    if is_demo:
+        return response
 
     # Persist to history
     history_entry = QueryHistory(
@@ -136,7 +162,9 @@ async def query_document(
 
 
 @router.post("/multi", response_model=MultiQueryResponse)
+@limiter.limit("10/hour", exempt_when=exempt_non_demo_request)
 async def query_multiple_documents(
+    request: Request,
     payload: MultiQueryRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -173,24 +201,46 @@ async def query_multiple_documents(
             )
 
     # Tier enforcement
-    try:
-        await check_query_limit(str(user_id), db)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+    is_demo = bool(current_user.get("is_demo"))
+    if not is_demo:
+        try:
+            await check_query_limit(str(user_id), db)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
     query_id = uuid.uuid4()
     docs_meta = [{"id": d.id, "name": d.original_filename or d.filename} for d in docs]
 
     # Synthesize across documents with balanced retrieval + cross-encoder reranking
-    response = await synthesize_multi_document_query(
-        document_ids=payload.document_ids,
-        question=payload.question,
-        query_id=query_id,
-        documents_meta=docs_meta,
-        db=db,
-        max_tokens=payload.max_tokens,
-        enable_rerank=payload.enable_rerank,
-    )
+    try:
+        response = await synthesize_multi_document_query(
+            document_ids=payload.document_ids,
+            user_id=user_id,
+            question=payload.question,
+            query_id=query_id,
+            documents_meta=docs_meta,
+            db=db,
+            max_tokens=payload.max_tokens,
+            enable_rerank=payload.enable_rerank,
+        )
+    except litellm.RateLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="AI service rate limit reached. Please try again later.",
+        )
+    except litellm.Timeout:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="AI service timed out. Please try again later.",
+        )
+    except litellm.ServiceUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service is temporarily unavailable. Please try again later.",
+        )
+
+    if is_demo:
+        return response
 
     # Persist multi-document query in history
     history_entry = QueryHistory(
