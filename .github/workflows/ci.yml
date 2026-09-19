@@ -67,11 +67,11 @@ jobs:
           SECRET_KEY: ci-test-secret-key-do-not-use-in-production-long-enough
           GOOGLE_API_KEY: test-placeholder-key
           GEMINI_API_KEY: test-placeholder-key
-          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_URL: "https://test.supabase.co"
           SUPABASE_ANON_KEY: test-anon-key
           SUPABASE_SERVICE_KEY: test-service-key
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
-          REDIS_URL: redis://localhost:6379
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          REDIS_URL: "redis://localhost:6379"
           ENVIRONMENT: test
           STRIPE_SECRET_KEY: ""
           STRIPE_PUBLISHABLE_KEY: ""
