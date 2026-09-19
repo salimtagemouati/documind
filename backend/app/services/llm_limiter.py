@@ -6,6 +6,7 @@ Protects Gemini/multi-provider free-tier quotas using:
 2. Exponential backoff with jitter on 429 / RateLimit / ServiceUnavailable errors (tenacity)
 """
 import asyncio
+import re
 from typing import Any, Callable, Coroutine, TypeVar
 
 import litellm
@@ -36,6 +37,24 @@ def get_llm_semaphore() -> asyncio.Semaphore:
     return _semaphore
 
 
+def extract_retry_delay(exc: BaseException) -> float | None:
+    """Extract explicit retry delay seconds provided by Gemini / Google AI Studio error payloads."""
+    msg = str(exc)
+    m = re.search(r"retry in ([\d\.]+)s", msg, re.IGNORECASE)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    m2 = re.search(r'retryDelay["\']?:\s*["\']?(\d+)s?', msg, re.IGNORECASE)
+    if m2:
+        try:
+            return float(m2.group(1))
+        except ValueError:
+            pass
+    return None
+
+
 def is_retryable_llm_error(exc: BaseException) -> bool:
     """Check if exception is a transient or rate-limit error that should be retried."""
     if isinstance(exc, (litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.Timeout)):
@@ -46,6 +65,40 @@ def is_retryable_llm_error(exc: BaseException) -> bool:
     return False
 
 
+class SmartWait:
+    """Combines explicit API-requested retryDelay with exponential backoff and jitter."""
+    def __init__(self):
+        self.fallback = wait_random_exponential(min=2, max=60)
+
+    def __call__(self, retry_state):
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        if exc:
+            delay = extract_retry_delay(exc)
+            if delay is not None:
+                # Add 2 seconds buffer over Google's required retry window
+                return delay + 2.0
+        return self.fallback(retry_state)
+
+
+_last_request_time: float = 0.0
+_pacing_lock = asyncio.Lock()
+
+
+async def _enforce_pacing(min_interval: float = 2.0) -> None:
+    """Enforce minimum delay between calls to stay under free tier RPM quotas."""
+    if getattr(settings, "ENVIRONMENT", "") == "test":
+        return
+    global _last_request_time
+    async with _pacing_lock:
+        loop = asyncio.get_event_loop()
+        now = loop.time()
+        elapsed = now - _last_request_time
+        if elapsed < min_interval:
+            wait_time = min_interval - elapsed
+            await asyncio.sleep(wait_time)
+        _last_request_time = loop.time()
+
+
 async def call_with_limits(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
     """
     Execute an LLM coroutine under concurrency semaphore and rate-limit retry protection.
@@ -54,17 +107,26 @@ async def call_with_limits(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -
         result = await call_with_limits(lambda: litellm.acompletion(...))
     """
     sem = get_llm_semaphore()
+    smart_wait = SmartWait()
+
     async with sem:
         async for attempt in AsyncRetrying(
             retry=retry_if_exception(is_retryable_llm_error),
-            stop=stop_after_attempt(6),
-            wait=wait_random_exponential(min=2, max=60),
+            stop=stop_after_attempt(10),
+            wait=smart_wait,
             reraise=True,
         ):
             with attempt:
                 try:
+                    await _enforce_pacing()
                     return await coro_factory()
                 except Exception as e:
                     if is_retryable_llm_error(e):
-                        logger.warning("llm_rate_limit_retry", attempt=attempt.retry_state.attempt_number, error=str(e)[:120])
+                        delay = extract_retry_delay(e)
+                        logger.warning(
+                            "llm_rate_limit_retry",
+                            attempt=attempt.retry_state.attempt_number,
+                            retry_delay_detected=delay,
+                            error=str(e)[:150],
+                        )
                     raise

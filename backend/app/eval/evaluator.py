@@ -14,6 +14,7 @@ Metrics evaluated:
 """
 import asyncio
 import datetime
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -106,13 +107,37 @@ class RAGEvaluator:
             })
         return results
 
+    async def _cached_generate_text(self, prompt: str, max_tokens: int = 250, temperature: float = 0.1) -> str:
+        cache_dir = CACHE_DIR / "llm_gen"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        key = hashlib.sha256(f"{settings.LLM_MODEL}_{prompt}".encode("utf-8")).hexdigest()[:20]
+        cache_file = cache_dir / f"{key}.txt"
+        if cache_file.exists():
+            return cache_file.read_text(encoding="utf-8")
+        self.llm_call_count += 1
+        res = await _generate_text(prompt, max_tokens=max_tokens, temperature=temperature)
+        cache_file.write_text(res, encoding="utf-8")
+        return res
+
+    async def _cached_rerank_chunks(self, query: str, chunks: List[dict], top_k: int) -> List[dict]:
+        cache_dir = CACHE_DIR / "llm_rerank"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        chunk_sig = "".join(str(c.get("content", ""))[:40] for c in chunks)
+        key = hashlib.sha256(f"{settings.LLM_MODEL}_{query}_{chunk_sig}_{top_k}".encode("utf-8")).hexdigest()[:20]
+        cache_file = cache_dir / f"{key}.json"
+        if cache_file.exists():
+            return json.loads(cache_file.read_text(encoding="utf-8"))
+        self.llm_call_count += 1
+        res = await rerank_chunks(query=query, chunks=chunks, top_k=top_k)
+        cache_file.write_text(json.dumps(res), encoding="utf-8")
+        return res
+
     async def _retrieve_with_rerank(self, doc_key: str, query: str, initial_top_k: int = 15, final_top_k: int = 5) -> List[dict]:
         """Two-stage retrieval: broad candidate pool + cross-encoder re-ranking."""
         candidates = await self._retrieve_baseline(doc_key, query, top_k=initial_top_k)
         if not self.enable_rerank:
             return candidates[:final_top_k]
-        self.llm_call_count += 1
-        reranked = await rerank_chunks(query=query, chunks=candidates, top_k=final_top_k)
+        reranked = await self._cached_rerank_chunks(query=query, chunks=candidates, top_k=final_top_k)
         return reranked
 
     async def run_evaluation(self, cases_limit: Optional[int] = None) -> Dict:
@@ -169,8 +194,7 @@ class RAGEvaluator:
 
             base_context = "\n\n".join(f"[Source {i+1}]\n{c}" for i, c in enumerate(base_contents))
             base_prompt = f"Answer using ONLY this context:\n{base_context}\n\nQuestion: {q}\nAnswer:"
-            self.llm_call_count += 1
-            base_answer = await _generate_text(base_prompt, max_tokens=250, temperature=0.1)
+            base_answer = await self._cached_generate_text(base_prompt, max_tokens=250, temperature=0.1)
             base_lat = time.perf_counter() - t0
             baseline_latencies.append(base_lat)
 
@@ -189,8 +213,7 @@ class RAGEvaluator:
 
             rerank_context = "\n\n".join(f"[Source {i+1}]\n{c}" for i, c in enumerate(rerank_contents))
             rerank_prompt = f"Answer using ONLY this context:\n{rerank_context}\n\nQuestion: {q}\nAnswer:"
-            self.llm_call_count += 1
-            rerank_answer = await _generate_text(rerank_prompt, max_tokens=250, temperature=0.1)
+            rerank_answer = await self._cached_generate_text(rerank_prompt, max_tokens=250, temperature=0.1)
             rerank_lat = time.perf_counter() - t1
             reranked_latencies.append(rerank_lat)
 
@@ -243,6 +266,8 @@ class RAGEvaluator:
                     "answer_preview": rerank_answer[:120],
                 },
             })
+            # Pace requests between cases to respect free tier rate quotas
+            await asyncio.sleep(2.0)
 
         # Summary aggregates
         avg_base_p = round(float(np.mean(baseline_precisions)), 3) if baseline_precisions else 0.0

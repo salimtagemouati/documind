@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import litellm
 import pytest
 
-from app.services.llm_limiter import call_with_limits, is_retryable_llm_error
+from app.services.llm_limiter import call_with_limits, extract_retry_delay, is_retryable_llm_error
 
 
 @pytest.mark.asyncio
@@ -39,3 +39,9 @@ def test_is_retryable_llm_error():
     assert is_retryable_llm_error(litellm.Timeout("timeout", model="m", llm_provider="p")) is True
     assert is_retryable_llm_error(RuntimeError("HTTP 429 RESOURCE_EXHAUSTED")) is True
     assert is_retryable_llm_error(ValueError("Invalid argument")) is False
+
+
+def test_extract_retry_delay():
+    assert extract_retry_delay(RuntimeError("Quota exceeded. Please retry in 46.14s.")) == 46.14
+    assert extract_retry_delay(RuntimeError('{"retryDelay": "30s"}')) == 30.0
+    assert extract_retry_delay(ValueError("generic error")) is None

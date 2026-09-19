@@ -15,10 +15,11 @@ EMBEDDING_CANDIDATES = [
 ]
 
 CHAT_CANDIDATES = [
+    "gemini/gemini-3.5-flash-lite",
+    "gemini/gemini-flash-latest",
+    "gemini/gemini-3.6-flash",
     "gemini/gemini-2.5-flash",
     "gemini/gemini-2.0-flash",
-    "gemini/gemini-3.6-flash",
-    "gemini/gemini-flash-latest",
 ]
 
 

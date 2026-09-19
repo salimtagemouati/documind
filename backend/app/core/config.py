@@ -66,13 +66,13 @@ class Settings(BaseSettings):
     OLLAMA_API_BASE: str = "http://localhost:11434"
 
     # Default to current generation free-tier models verified via verify_gemini_key.py
-    LLM_MODEL: str = "gemini/gemini-3.6-flash"
+    LLM_MODEL: str = "gemini/gemini-3.5-flash-lite"
     EMBEDDING_MODEL: str = "gemini/gemini-embedding-001"
     EMBEDDING_DIM: int = 768
     LLM_MAX_CONCURRENCY: int = 3
 
     # Backward compatibility properties
-    GEMINI_CHAT_MODEL: str = "gemini-3.6-flash"
+    GEMINI_CHAT_MODEL: str = "gemini-3.5-flash-lite"
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     # ─── RAG / Retrieval & Re-ranking ───────────────────────────────────────
