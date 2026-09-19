@@ -1,7 +1,9 @@
+from io import BytesIO
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from io import BytesIO
+
 
 @pytest_asyncio.fixture
 async def auth_client(async_client: AsyncClient):

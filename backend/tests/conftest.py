@@ -1,5 +1,6 @@
 import os
 import warnings
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # Set test environment variables before any app configuration is loaded
@@ -12,7 +13,11 @@ os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("ENVIRONMENT", "test")
 
-from unittest.mock import AsyncMock, MagicMock, patch
+# ruff: noqa: E402
+import json
+import sqlite3
+from unittest.mock import MagicMock, patch
+
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -20,10 +25,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
-
 from sqlalchemy.sql.elements import BinaryExpression
-import sqlite3
-import json
 
 # Register sqlite3 adapters for list and dict so SQLite can serialize JSON/ARRAY columns in tests
 sqlite3.register_adapter(list, lambda val: json.dumps(val, default=str))
@@ -49,11 +51,20 @@ def compile_binary(element, compiler, **kw):
     return compiler.visit_binary(element, **kw)
 
 from app.core.config import get_settings
+from app.core.limiter import limiter
 from app.db.database import get_db
 from app.main import app
 from app.models.models import Base
 
 settings = get_settings()
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limits():
+    """Keep per-IP limiter state isolated between tests."""
+    limiter._limiter.storage.reset()
+    yield
+    limiter._limiter.storage.reset()
 
 from sqlalchemy.pool import StaticPool
 

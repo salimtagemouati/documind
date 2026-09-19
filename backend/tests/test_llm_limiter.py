@@ -1,11 +1,16 @@
 """
 Unit tests for LLM rate limiter, concurrency controller, and retry mechanism.
 """
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
+
 import litellm
 import pytest
 
-from app.services.llm_limiter import call_with_limits, extract_retry_delay, is_retryable_llm_error
+from app.services.llm_limiter import (
+    call_with_limits,
+    extract_retry_delay,
+    is_retryable_llm_error,
+)
 
 
 @pytest.mark.asyncio

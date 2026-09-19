@@ -1,5 +1,6 @@
+
 import pytest
-from copy import deepcopy
+
 
 class MockRedis:
     def __init__(self):
@@ -36,7 +37,8 @@ def mock_redis(monkeypatch):
 @pytest.mark.asyncio
 async def test_set_and_get_cache(mock_redis):
     from uuid import uuid4
-    from app.services.cache_service import set_cached_answer, get_cached_answer
+
+    from app.services.cache_service import get_cached_answer, set_cached_answer
     
     doc_id = str(uuid4())
     query = "What is X?"
@@ -53,7 +55,12 @@ async def test_set_and_get_cache(mock_redis):
 @pytest.mark.asyncio
 async def test_invalidate_cache(mock_redis):
     from uuid import uuid4
-    from app.services.cache_service import invalidate_document_cache, set_cached_answer, get_cached_answer
+
+    from app.services.cache_service import (
+        get_cached_answer,
+        invalidate_document_cache,
+        set_cached_answer,
+    )
     
     doc_id = str(uuid4())
     query = "What is X?"
