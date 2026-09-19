@@ -127,3 +127,26 @@ async def test_multi_document_retrieval(db_session):
     doc_names = {r["document_name"] for r in retrieved}
     assert "Contract A.pdf" in doc_names
     assert "Contract B.pdf" in doc_names
+
+
+@pytest.mark.asyncio
+async def test_embedding_dimensions_and_unit_norm():
+    import numpy as np
+    from app.core.config import get_settings
+    from app.services.rag_service import embed_query, embed_texts
+
+    settings = get_settings()
+
+    # Query embedding
+    q_vec = await embed_query("Test retrieval query")
+    assert len(q_vec) == settings.EMBEDDING_DIM
+    assert np.isclose(np.linalg.norm(q_vec), 1.0, atol=1e-4)
+
+    # Batch texts embedding
+    texts = ["First passage to embed", "Second passage to embed"]
+    batch_arr = await embed_texts(texts)
+    assert batch_arr.shape == (2, settings.EMBEDDING_DIM)
+    for vec in batch_arr:
+        assert len(vec) == settings.EMBEDDING_DIM
+        assert np.isclose(np.linalg.norm(vec), 1.0, atol=1e-4)
+

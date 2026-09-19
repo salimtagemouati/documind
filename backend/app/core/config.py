@@ -65,14 +65,15 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     OLLAMA_API_BASE: str = "http://localhost:11434"
 
-    # Default to current generation free-tier models (upgraded from deprecated 1.5)
-    LLM_MODEL: str = "gemini/gemini-2.0-flash"
-    EMBEDDING_MODEL: str = "gemini/text-embedding-004"
+    # Default to current generation free-tier models verified via verify_gemini_key.py
+    LLM_MODEL: str = "gemini/gemini-3.6-flash"
+    EMBEDDING_MODEL: str = "gemini/gemini-embedding-001"
     EMBEDDING_DIM: int = 768
+    LLM_MAX_CONCURRENCY: int = 3
 
     # Backward compatibility properties
-    GEMINI_CHAT_MODEL: str = "gemini-2.0-flash"
-    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
+    GEMINI_CHAT_MODEL: str = "gemini-3.6-flash"
+    GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     # ─── RAG / Retrieval & Re-ranking ───────────────────────────────────────
     CHUNK_SIZE: int = 800                 # tokens per chunk

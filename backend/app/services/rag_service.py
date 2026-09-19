@@ -56,6 +56,7 @@ async def embed_texts(texts: List[str]) -> np.ndarray:
         kwargs = {
             "model": settings.EMBEDDING_MODEL,
             "input": batch,
+            "dimensions": settings.EMBEDDING_DIM,
         }
         if google_key and "gemini" in settings.EMBEDDING_MODEL:
             kwargs["api_key"] = google_key
@@ -71,7 +72,7 @@ async def embed_texts(texts: List[str]) -> np.ndarray:
             raise
 
     arr = np.array(all_embeddings, dtype=np.float32)
-    # Normalize vectors for cosine similarity
+    # Re-normalize vectors to unit norm (Matryoshka truncation breaks unit length)
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     arr = arr / norms
@@ -89,6 +90,7 @@ async def embed_query(query: str) -> np.ndarray:
     kwargs = {
         "model": settings.EMBEDDING_MODEL,
         "input": [query],
+        "dimensions": settings.EMBEDDING_DIM,
     }
     if google_key and "gemini" in settings.EMBEDDING_MODEL:
         kwargs["api_key"] = google_key
@@ -102,6 +104,7 @@ async def embed_query(query: str) -> np.ndarray:
         logger.error("query_embedding_failed", error=str(e), model=settings.EMBEDDING_MODEL)
         raise
 
+    # Strictly re-normalize to unit vector
     norm = np.linalg.norm(vec)
     if norm > 0:
         vec = vec / norm

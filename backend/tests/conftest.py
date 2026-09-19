@@ -115,24 +115,17 @@ async def async_client(test_app):
 def mock_ai_and_gemini():
     """Mock all LiteLLM and Google Gemini API calls across the app."""
     with patch("litellm.acompletion") as mock_litellm_comp, \
-         patch("litellm.aembedding") as mock_litellm_embed, \
-         patch("app.services.rag_service.embed_texts") as mock_embed_texts, \
-         patch("app.services.rag_service.embed_query") as mock_embed_query:
-
-        import numpy as np
-        # 768 dimensions for text-embedding-004 / gemini embeddings
-        dummy_vec = np.array([0.05] * 768, dtype=np.float32)
-        norm = np.linalg.norm(dummy_vec)
-        if norm > 0:
-            dummy_vec = dummy_vec / norm
-
-        mock_embed_query.return_value = dummy_vec
-        mock_embed_texts.side_effect = lambda texts: np.tile(dummy_vec, (len(texts), 1))
+         patch("litellm.aembedding") as mock_litellm_embed:
 
         # Mock LiteLLM embedding
-        mock_embed_obj = MagicMock()
-        mock_embed_obj.data = [{"embedding": dummy_vec.tolist()}]
-        mock_litellm_embed.return_value = mock_embed_obj
+        def _fake_embed(*args, **kwargs):
+            inputs = kwargs.get("input", ["test"])
+            dims = kwargs.get("dimensions", 768)
+            mock_obj = MagicMock()
+            mock_obj.data = [{"embedding": [0.05] * dims} for _ in inputs]
+            return mock_obj
+
+        mock_litellm_embed.side_effect = _fake_embed
 
         # Mock LiteLLM completion
         mock_choice = MagicMock()
@@ -150,8 +143,6 @@ def mock_ai_and_gemini():
         yield {
             "acompletion": mock_litellm_comp,
             "aembedding": mock_litellm_embed,
-            "embed_query": mock_embed_query,
-            "embed_texts": mock_embed_texts,
         }
 
 
