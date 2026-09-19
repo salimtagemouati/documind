@@ -31,6 +31,7 @@ from app.schemas.schemas import (
     SentimentResult,
     SourceChunk,
 )
+from app.services.llm_limiter import call_with_limits
 from app.services.rag_service import retrieve_similar_chunks
 from app.services.rerank_service import rerank_chunks
 
@@ -80,7 +81,7 @@ async def _generate_text(prompt: str, max_tokens: int = 800, temperature: float 
         "max_tokens": max_tokens,
         "temperature": temperature,
     })
-    response = await litellm.acompletion(**kwargs)
+    response = await call_with_limits(lambda: litellm.acompletion(**kwargs))
     text = response.choices[0].message.content or ""
     return text.strip()
 
@@ -95,13 +96,13 @@ async def _generate_json(prompt: str, max_tokens: int = 800, temperature: float 
         "response_format": {"type": "json_object"},
     })
     try:
-        response = await litellm.acompletion(**kwargs)
+        response = await call_with_limits(lambda: litellm.acompletion(**kwargs))
         raw_text = response.choices[0].message.content or "{}"
     except Exception as e:
         logger.warning("json_response_format_failed_retrying_plain", error=str(e))
         # Some older/free endpoints fail on explicit response_format
         kwargs.pop("response_format", None)
-        response = await litellm.acompletion(**kwargs)
+        response = await call_with_limits(lambda: litellm.acompletion(**kwargs))
         raw_text = response.choices[0].message.content or "{}"
 
     # Clean code fences

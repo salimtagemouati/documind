@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.models.models import Document, DocumentChunk
+from app.services.llm_limiter import call_with_limits
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -46,7 +47,7 @@ async def embed_texts(texts: List[str]) -> np.ndarray:
         os.environ.setdefault("GOOGLE_API_KEY", settings.GOOGLE_API_KEY)
 
     all_embeddings = []
-    batch_size = 50
+    batch_size = 100  # Max batch size per call for free-tier efficiency
 
     google_key = settings.GOOGLE_API_KEY or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     openai_key = settings.OPENAI_API_KEY or os.environ.get("OPENAI_API_KEY")
@@ -64,7 +65,7 @@ async def embed_texts(texts: List[str]) -> np.ndarray:
             kwargs["api_key"] = openai_key
 
         try:
-            response = await litellm.aembedding(**kwargs)
+            response = await call_with_limits(lambda: litellm.aembedding(**kwargs))
             batch_embeddings = [item["embedding"] for item in response.data]
             all_embeddings.extend(batch_embeddings)
         except Exception as e:
@@ -98,7 +99,7 @@ async def embed_query(query: str) -> np.ndarray:
         kwargs["api_key"] = openai_key
 
     try:
-        response = await litellm.aembedding(**kwargs)
+        response = await call_with_limits(lambda: litellm.aembedding(**kwargs))
         vec = np.array(response.data[0]["embedding"], dtype=np.float32)
     except Exception as e:
         logger.error("query_embedding_failed", error=str(e), model=settings.EMBEDDING_MODEL)

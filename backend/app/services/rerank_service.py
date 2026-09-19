@@ -16,6 +16,7 @@ import litellm
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.services.llm_limiter import call_with_limits
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -94,7 +95,7 @@ Return ONLY a valid JSON array of objects with "id" (integer) and "score" (float
         elif openai_key and "gpt" in settings.LLM_MODEL:
             kwargs["api_key"] = openai_key
 
-        response = await litellm.acompletion(**kwargs)
+        response = await call_with_limits(lambda: litellm.acompletion(**kwargs))
         raw_text = response.choices[0].message.content or ""
 
         # Clean markdown code fences if present
