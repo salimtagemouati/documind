@@ -9,7 +9,7 @@ import json
 import os
 import re
 import time
-from typing import List, Optional
+from typing import List
 from uuid import UUID
 
 import litellm

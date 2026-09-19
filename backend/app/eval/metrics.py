@@ -9,7 +9,7 @@ Quantifies:
 5. Refusal Accuracy: Correct refusal on out-of-domain / unanswerable questions
 """
 import re
-from typing import List, Sequence
+from typing import Sequence
 
 
 def precision_at_k(retrieved_contents: Sequence[str], required_keywords: Sequence[str]) -> float:

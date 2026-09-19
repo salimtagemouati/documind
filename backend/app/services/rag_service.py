@@ -11,14 +11,13 @@ Architecture:
   4. Chunks are permanently persisted in PostgreSQL — zero ephemeral index files,
      no startup wipes, fully multi-tenant via RLS and document foreign keys.
 """
-import asyncio
 import os
 from typing import List, Sequence, Union
 from uuid import UUID
 
 import litellm
 import numpy as np
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings

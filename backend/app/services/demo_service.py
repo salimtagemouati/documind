@@ -4,7 +4,6 @@ Demo Service — Instant Zero-Friction Public Demo Access
 Provides pre-seeded, high-quality benchmark documents for portfolio visitors,
 recruiters, and interviewers to experience DocuMind without registration friction.
 """
-from typing import List
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -12,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.core.security import hash_password
-from app.models.models import Document, DocumentChunk, DocumentStatus, User, UserRole
+from app.models.models import Document, DocumentStatus, User, UserRole
 from app.services.document_processor import chunk_text
 from app.services.rag_service import build_document_index
 

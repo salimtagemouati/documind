@@ -37,8 +37,8 @@ os.environ.setdefault("SUPABASE_ANON_KEY", "placeholder-anon-key")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "placeholder-service-key")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 
-from app.core.config import get_settings
-from app.eval.evaluator import RAGEvaluator
+from app.core.config import get_settings  # noqa: E402
+from app.eval.evaluator import RAGEvaluator  # noqa: E402
 
 settings = get_settings()
 

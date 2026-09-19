@@ -7,7 +7,6 @@ Gold-standard labeled evaluation dataset testing:
 3. Multi-hop synthesis
 4. Adversarial/Negative out-of-domain queries (hallucination/refusal test)
 """
-from typing import Dict, List
 
 BENCHMARK_CASES = [
     # ── SaaS Contract Domain ────────────────────────────────────────────────

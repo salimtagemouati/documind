@@ -29,6 +29,7 @@ async def get_eval_benchmark():
     """
     import json
     from pathlib import Path
+
     from app.eval.evaluator import REPORT_FILE
 
     candidate_paths = [

@@ -13,13 +13,13 @@ import sentry_sdk
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from slowapi.util import get_remote_address
 
 from app.api.routes import analytics, auth, billing, documents, query, ws
 from app.core.config import get_settings
+from app.core.limiter import limiter
 from app.core.logging import configure_logging, get_logger
 from app.db.database import close_db, init_db
 
@@ -31,10 +31,6 @@ logger = get_logger(__name__)
 # ─── Sentry (error tracking in production) ───────────────────────────────────
 if settings.SENTRY_DSN:
     sentry_sdk.init(dsn=settings.SENTRY_DSN, traces_sample_rate=0.2)
-
-
-# ─── Rate limiter ─────────────────────────────────────────────────────────────
-from app.core.limiter import limiter
 
 
 # ─── Lifespan ────────────────────────────────────────────────────────────────

@@ -4,9 +4,9 @@ Supports access tokens (short-lived) and refresh tokens (long-lived).
 """
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import bcrypt
 from jose import JWTError, jwt
 
 from app.core.config import get_settings
