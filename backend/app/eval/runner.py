@@ -206,14 +206,12 @@ async def main():
     report_md.write_text(report_text)
     print(f"\n✓ Markdown report written to: {report_md}")
 
-    # Also save benchmark_report.json at backend root, app/eval, and docs for easy access
-    root_json = Path(__file__).parents[2] / "benchmark_report.json"
-    root_json.write_text(json.dumps(summary, indent=2))
+    # Keep one runtime copy in the application image and one auditable docs copy.
     eval_json = Path(__file__).parent / "benchmark_report.json"
     eval_json.write_text(json.dumps(summary, indent=2))
     docs_json = out_dir_path / "benchmark_report.json"
     docs_json.write_text(json.dumps(summary, indent=2))
-    print(f"✓ JSON benchmark report saved to: {root_json}, {eval_json}, and {docs_json}")
+    print(f"✓ JSON benchmark report saved to: {eval_json} and {docs_json}")
     print("=" * 72)
 
 

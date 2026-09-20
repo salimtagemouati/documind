@@ -225,7 +225,7 @@ cd backend
 python -m app.eval.runner
 ```
 
-Outputs formatted ASCII comparison table, writes `docs/EVALUATION_REPORT.md`, and updates `backend/benchmark_report.json`.
+Outputs a formatted ASCII comparison table, writes `docs/EVALUATION_REPORT.md`, and updates the runtime and documentation copies of `benchmark_report.json`.
 
 ---
 

@@ -34,7 +34,6 @@ async def get_eval_benchmark():
 
     candidate_paths = [
         REPORT_FILE,
-        Path(__file__).parents[2] / "benchmark_report.json",
         Path(__file__).parents[3] / "docs" / "benchmark_report.json",
     ]
 
