@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { prewarmApi } from '../services/api'
+import { billingApi, prewarmApi } from '../services/api'
 import './LandingPage.css'
 
 /* ─── SVG Icon Components ─── */
@@ -79,13 +79,13 @@ const features = [
     icon: <IconSearch />,
     color: 'indigo',
     title: 'RAG-Powered Q&A',
-    desc: 'Ask natural language questions and get precise answers grounded in your documents with source citations.',
+    desc: 'Ask natural language questions and get answers grounded in retrieved document passages with source citations.',
   },
   {
     icon: <IconFileText />,
     color: 'violet',
     title: 'Smart Summarization',
-    desc: 'Map-reduce summarization that captures key insights from lengthy documents in seconds.',
+    desc: 'Map-reduce summarization that captures key insights across long documents.',
   },
   {
     icon: <IconUsers />,
@@ -103,7 +103,7 @@ const features = [
     icon: <IconClock />,
     color: 'amber',
     title: 'Query History',
-    desc: 'Full history of every question asked, with cached responses for instant retrieval.',
+    desc: 'Review previous questions and reuse cached responses when available.',
   },
 ]
 
@@ -111,12 +111,12 @@ const steps = [
   {
     icon: <IconUpload />,
     title: 'Upload Documents',
-    desc: 'Drop any PDF, Word document, or text file. Processing starts instantly in the background.',
+    desc: 'Drop any PDF, Word document, or text file. Processing runs in the background.',
   },
   {
     icon: <IconCpu />,
     title: 'AI Processes',
-    desc: 'Documents are chunked, embedded into vectors, and analyzed with Gemini AI for entities, sentiment, and summaries.',
+    desc: 'Documents are chunked, embedded into vectors, and analyzed with the configured LLM for entities, sentiment, and summaries.',
   },
   {
     icon: <IconMessageCircle />,
@@ -126,9 +126,9 @@ const steps = [
 ]
 
 const stats = [
-  { value: '200+', label: 'Documents analyzed' },
-  { value: '10k+', label: 'Queries answered' },
-  { value: '<2s', label: 'Avg response time' },
+  { value: 'Hybrid search', label: 'Semantic and lexical retrieval fused with RRF' },
+  { value: 'Cited answers', label: 'Chunk and page provenance included with responses' },
+  { value: 'Multi-document', label: 'Balanced evidence retrieval across selected files' },
 ]
 
 const freePlanFeatures = [
@@ -141,11 +141,10 @@ const freePlanFeatures = [
 
 const proPlanFeatures = [
   'Unlimited documents',
-  'Unlimited AI queries',
-  'Priority processing',
-  'Advanced analytics',
-  'API access',
-  'Email support',
+  'Unlimited daily query quota',
+  'PDF, DOCX, TXT support',
+  'AI summaries and entities',
+  'RAG Q&A with citations',
 ]
 
 /* ─── Intersection Observer Hook ─── */
@@ -184,8 +183,19 @@ function RevealSection({ children, className = '' }: { children: React.ReactNode
 
 /* ─── LANDING PAGE COMPONENT ─── */
 export default function LandingPage() {
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false)
+
   useEffect(() => {
     void prewarmApi()
+    let active = true
+    void billingApi.getConfig()
+      .then(({ data }) => {
+        if (active) setPaymentsEnabled(data.payments_enabled)
+      })
+      .catch(() => {
+        if (active) setPaymentsEnabled(false)
+      })
+    return () => { active = false }
   }, [])
 
   return (
@@ -217,7 +227,7 @@ export default function LandingPage() {
         <div className="hero-content">
           <div className="hero-badge fade-up">
             <span className="hero-badge-dot" />
-            Two-Stage RAG · pgvector · Multi-Provider LLM · Cross-Encoder Re-ranking
+            Two-Stage RAG · pgvector · Multi-Provider LLM · LLM Re-ranking
           </div>
 
           <h1 className="hero-title fade-up fade-up-d1">
@@ -228,7 +238,7 @@ export default function LandingPage() {
           <p className="hero-subtitle fade-up fade-up-d2">
             Ask complex questions across single or multiple documents.
             Experience hybrid semantic search, two-stage re-ranking, and
-            factual answers with proven source provenance.
+            grounded answers with source-level provenance.
           </p>
 
           <div className="hero-actions fade-up fade-up-d3">
@@ -301,7 +311,7 @@ export default function LandingPage() {
               </div>
               <h2 className="section-title">Three Steps to Document Intelligence</h2>
               <p className="section-subtitle">
-                From raw document to intelligent conversation in under a minute.
+                From raw document to a cited, searchable workspace.
               </p>
             </div>
           </RevealSection>
@@ -353,7 +363,9 @@ export default function LandingPage() {
               </div>
               <h2 className="section-title">Simple, Transparent Pricing</h2>
               <p className="section-subtitle">
-                Start free. Upgrade when you need more power.
+                {paymentsEnabled
+                  ? 'Start free. Stripe checkout is available when you need a larger quota.'
+                  : 'Demo project — payments disabled. The Free workspace remains available.'}
               </p>
             </div>
           </RevealSection>
@@ -383,13 +395,19 @@ export default function LandingPage() {
 
               {/* Pro Tier */}
               <div className="pricing-card pricing-card--pro" id="pricing-pro">
-                <div className="pricing-popular">Most Popular</div>
+                <div className="pricing-popular">
+                  {paymentsEnabled ? 'Stripe enabled' : 'Payments disabled'}
+                </div>
                 <div className="pricing-name">Pro</div>
                 <div className="pricing-price">
-                  <span className="pricing-amount">$12</span>
-                  <span className="pricing-period">/ month</span>
+                  <span className="pricing-amount">{paymentsEnabled ? 'Pro' : 'Demo'}</span>
+                  <span className="pricing-period">{paymentsEnabled ? 'subscription via Stripe' : 'no checkout'}</span>
                 </div>
-                <p className="pricing-desc">For professionals who need unlimited power.</p>
+                <p className="pricing-desc">
+                  {paymentsEnabled
+                    ? 'For users who need unlimited document and daily query quotas.'
+                    : 'This deployment does not accept payments.'}
+                </p>
                 <ul className="pricing-features">
                   {proPlanFeatures.map((feat, i) => (
                     <li key={i}>
@@ -398,10 +416,16 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <Link to="/register" className="btn btn-primary btn-pricing" id="pricing-pro-cta">
-                  Start Pro Trial
-                  <IconArrowRight />
-                </Link>
+                {paymentsEnabled ? (
+                  <Link to="/register" className="btn btn-primary btn-pricing" id="pricing-pro-cta">
+                    Create account to upgrade
+                    <IconArrowRight />
+                  </Link>
+                ) : (
+                  <button type="button" className="btn btn-primary btn-pricing" id="pricing-pro-cta" disabled>
+                    Payments disabled
+                  </button>
+                )}
               </div>
             </div>
           </RevealSection>

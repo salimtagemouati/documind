@@ -289,6 +289,13 @@ html { scroll-behavior: smooth; }
   box-shadow: 0 8px 32px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(99, 102, 241, 0.4);
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
+}
+
 .btn-secondary {
   background: rgba(255, 255, 255, 0.04);
   color: #c9cdd6;
@@ -555,7 +562,7 @@ html { scroll-behavior: smooth; }
 }
 
 .stat-value {
-  font-size: 2.2rem;
+  font-size: 1.15rem;
   font-weight: 800;
   color: #818cf8;
   margin-bottom: 6px;
@@ -565,6 +572,7 @@ html { scroll-behavior: smooth; }
   font-size: 0.85rem;
   color: #6b7280;
   font-weight: 500;
+  line-height: 1.5;
 }
 
 /* ─── PRICING ─── */
@@ -749,6 +757,10 @@ html { scroll-behavior: smooth; }
 
 /* ─── RESPONSIVE ─── */
 @media (max-width: 900px) {
+  .nav-links-desktop {
+    display: none;
+  }
+
   .features-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -781,10 +793,6 @@ html { scroll-behavior: smooth; }
 @media (max-width: 600px) {
   .landing-nav {
     padding: 0 16px;
-  }
-
-  .nav-links-desktop {
-    display: none;
   }
 
   .hero {

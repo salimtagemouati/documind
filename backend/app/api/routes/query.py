@@ -211,7 +211,7 @@ async def query_multiple_documents(
     query_id = uuid.uuid4()
     docs_meta = [{"id": d.id, "name": d.original_filename or d.filename} for d in docs]
 
-    # Synthesize across documents with balanced retrieval + cross-encoder reranking
+    # Synthesize across documents with balanced retrieval plus batched LLM reranking
     try:
         response = await synthesize_multi_document_query(
             document_ids=payload.document_ids,

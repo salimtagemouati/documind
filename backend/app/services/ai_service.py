@@ -261,7 +261,7 @@ async def answer_question(
     """
     Two-stage RAG Pipeline:
     1. Hybrid dense+sparse retrieval from pgvector (initial top-15 candidates)
-    2. Cross-encoder / LLM re-ranking to top-6 high-information chunks
+    2. Batched LLM re-ranking to top-6 high-information chunks
     3. Grounded answer generation with strict citation adherence
     """
     start_ms = int(time.time() * 1000)

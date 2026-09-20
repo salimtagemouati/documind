@@ -3,6 +3,21 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_public_billing_config_reports_payments_disabled(
+    async_client: AsyncClient, monkeypatch
+):
+    import app.api.routes.billing as billing_route
+
+    monkeypatch.setattr(billing_route.settings, "STRIPE_SECRET_KEY", "")
+    monkeypatch.setattr(billing_route.settings, "STRIPE_PRICE_ID_PRO", "")
+
+    response = await async_client.get("/api/v1/billing/config")
+
+    assert response.status_code == 200
+    assert response.json() == {"payments_enabled": False}
+
+
+@pytest.mark.asyncio
 async def test_register_success(async_client: AsyncClient):
     payload = {"email": "test@example.com", "password": "SecurePwd123!", "full_name": "Test User"}
     response = await async_client.post("/api/v1/auth/register", json=payload)

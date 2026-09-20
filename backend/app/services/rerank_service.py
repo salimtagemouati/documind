@@ -2,7 +2,7 @@
 Re-ranking Service — Two-Stage Retrieval Optimization
 
 Stage 1: High-recall hybrid search retrieves top N candidates (e.g. 15 chunks).
-Stage 2: Cross-encoder / LLM relevance scoring ranks candidate passages by semantic alignment.
+Stage 2: One batched LLM relevance-scoring call ranks candidate passages by semantic alignment.
 
 Reduces retrieval bleed and hallucination by presenting only high-density,
 strictly pertinent chunks to the answer generation stage.

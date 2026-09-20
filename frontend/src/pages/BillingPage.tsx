@@ -35,6 +35,11 @@ export default function BillingPage() {
     queryKey: ['billingStatus'],
     queryFn: () => billingApi.getStatus().then(r => r.data),
   })
+  const { data: billingConfig } = useQuery({
+    queryKey: ['billingConfig'],
+    queryFn: () => billingApi.getConfig().then(r => r.data),
+    staleTime: 5 * 60_000,
+  })
 
   const checkoutMutation = useMutation({
     mutationFn: () => billingApi.createCheckout(),
@@ -57,6 +62,7 @@ export default function BillingPage() {
   })
 
   const isPro = billing?.is_pro ?? false
+  const paymentsEnabled = billingConfig?.payments_enabled ?? false
 
   return (
     <div style={{ minHeight: '100vh', background: '#0f1117', color: '#fff', fontFamily: 'inherit' }}>
@@ -140,23 +146,21 @@ export default function BillingPage() {
                 background: isPro ? 'rgba(139,92,246,0.06)' : 'rgba(255,255,255,0.03)',
               }}>
                 {isPro && <div style={{ ...currentBadge, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>Current Plan</div>}
-                {!isPro && <div style={{ ...currentBadge, background: 'linear-gradient(135deg, #f59e0b, #f97316)', color: '#fff' }}>Recommended</div>}
+                {!isPro && <div style={{ ...currentBadge, background: 'linear-gradient(135deg, #f59e0b, #f97316)', color: '#fff' }}>{paymentsEnabled ? 'Available' : 'Payments disabled'}</div>}
                 <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '4px' }}>Pro</h2>
                 <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#e5e7eb', marginBottom: '8px' }}>
-                  $12<span style={{ fontSize: '0.9rem', fontWeight: 400, color: '#6b7280' }}>/month</span>
+                  Pro<span style={{ fontSize: '0.9rem', fontWeight: 400, color: '#6b7280' }}> via Stripe</span>
                 </div>
                 <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '24px' }}>
-                  For power users and teams
+                  Unlimited document and daily query quotas
                 </p>
                 <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                   {[
                     'Unlimited documents',
-                    'Unlimited queries',
-                    'Priority processing',
-                    'Advanced analytics',
-                    'Export reports',
-                    'API access',
-                    'Email support',
+                    'Unlimited daily query quota',
+                    'PDF, DOCX, TXT support',
+                    'AI summaries and entities',
+                    'RAG Q&A with citations',
                   ].map((f, i) => (
                     <li key={i} style={featureItem}>
                       <span style={{ color: '#8b5cf6' }}>✓</span> {f}
@@ -175,10 +179,15 @@ export default function BillingPage() {
                 ) : (
                   <button
                     onClick={() => checkoutMutation.mutate()}
-                    disabled={checkoutMutation.isPending}
-                    style={{ ...actionBtn, marginTop: '24px' }}
+                    disabled={checkoutMutation.isPending || !paymentsEnabled}
+                    style={{
+                      ...actionBtn,
+                      marginTop: '24px',
+                      cursor: paymentsEnabled ? 'pointer' : 'not-allowed',
+                      opacity: paymentsEnabled ? 1 : 0.55,
+                    }}
                   >
-                    {checkoutMutation.isPending ? 'Redirecting...' : 'Upgrade to Pro — $12/mo'}
+                    {checkoutMutation.isPending ? 'Redirecting...' : paymentsEnabled ? 'Upgrade to Pro' : 'Payments disabled'}
                   </button>
                 )}
               </div>

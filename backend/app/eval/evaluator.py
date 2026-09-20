@@ -3,7 +3,7 @@ Evaluation Orchestrator — Runs Scientific Side-by-Side RAG Benchmark (Vector v
 
 Compares:
 - Run A (Baseline): Standard Dense Vector Retrieval (top_k=K)
-- Run B (Enhanced): Two-Stage Hybrid Candidate Retrieval (top_k=Candidates) + Cross-Encoder / LLM Re-ranking (top_k=K)
+- Run B (Enhanced): Two-Stage Hybrid Candidate Retrieval (top_k=Candidates) + batched LLM re-ranking (top_k=K)
 
 Metrics evaluated:
 1. Retrieval Precision@K
@@ -146,7 +146,7 @@ class RAGEvaluator:
         return res
 
     async def _retrieve_with_rerank(self, doc_key: str, query: str, initial_top_k: int = 15, final_top_k: int = 5) -> List[dict]:
-        """Two-stage retrieval: broad candidate pool + cross-encoder re-ranking."""
+        """Two-stage retrieval: broad candidate pool plus batched LLM re-ranking."""
         candidates = await self._retrieve_baseline(doc_key, query, top_k=initial_top_k)
         if not self.enable_rerank:
             return candidates[:final_top_k]

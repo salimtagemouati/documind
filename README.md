@@ -14,12 +14,12 @@
 
 ---
 
-## 🔗 Live Deployments & Instant Demo
+## 🔗 Live Deployments & Public Demo
 
 | Service | Access Link | Notes |
 |:---|:---|:---|
 | 🌐 **Web App (Vercel)** | [documind-frontend.vercel.app](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app) | Production SPA with Interactive Benchmark Modal |
-| 🚀 **Instant Demo Mode** | [Live Demo Access](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app/demo) | 1-click recruiter demo with preloaded enterprise contracts |
+| 🚀 **Public Demo Mode** | [Live Demo Access](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app/demo) | Read-only recruiter demo with preloaded enterprise contracts |
 | ⚙️ **Backend deployment** | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Cloud Run deployment and cutover guide |
 | 💻 **Local development** | [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md) | SQLite quickstart and Supabase connection guidance |
 | 📊 **Evaluation Methodology** | [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) | Audit status, formulas, legacy artifact, and limitations |
@@ -139,10 +139,10 @@ flowchart LR
 | 🛡️ **Tenant-filtered retrieval** | Every dense and lexical retrieval query joins the document owner and filters by authenticated user ID |
 | 🎭 **Instant Public Demo Mode** | Short-lived demo tokens, read-only UI/API writes, per-IP query limits, and seeded documents |
 | 📈 **In-App Benchmark Viewer** | Displays stored results and warns when an artifact predates the current methodology |
-| 📝 **Document Summarization** | Hierarchical map-reduce summarization handles large multi-page files effortlessly |
+| 📝 **Document Summarization** | Hierarchical map-reduce summarization handles large multi-page files |
 | 🏷️ **Entity & Theme Extraction** | Automatic extraction of people, organizations, dates, and domain entities |
-| ⚡ **Redis Cache Layer** | Exact-query cache with 1h TTL saves LLM costs and provides instant responses |
-| 💳 **Stripe Subscription Billing** | Tiered usage limits with Stripe Webhook integration for automated plan upgrades |
+| ⚡ **Redis Cache Layer** | Exact-query cache with 1h TTL reuses answers without another provider call |
+| 💳 **Optional Stripe Billing** | Tiered usage limits and Stripe webhooks activate only when server billing variables are configured |
 
 ---
 

@@ -118,14 +118,14 @@
 - Produces: public `GET /api/v1/billing/config` returning only `payments_enabled: bool`.
 - Consumes: actual free limits 3 documents and 20 daily queries from backend settings.
 
-- [ ] Write a failing backend test for the non-secret payment configuration endpoint.
-- [ ] Implement the endpoint and frontend query with a safe disabled default.
-- [ ] Replace fabricated usage statistics with qualitative capabilities.
-- [ ] Rename all cross-encoder claims to LLM re-ranking.
-- [ ] Remove unsupported trial, priority, API-access, email-support, and latency promises.
-- [ ] Keep only features confirmed by `ai_service.py`, document processing, and billing enforcement.
-- [ ] Run repository claim searches, Impeccable detection, pytest, Ruff, lint, build, and npm audit.
-- [ ] Commit as `fix(landing): align product claims with implementation`.
+- [x] Write a failing backend test for the non-secret payment configuration endpoint.
+- [x] Implement the endpoint and frontend query with a safe disabled default.
+- [x] Replace fabricated usage statistics with qualitative capabilities.
+- [x] Rename all cross-encoder claims to LLM re-ranking.
+- [x] Remove unsupported trial, priority, API-access, email-support, and latency promises.
+- [x] Keep only features confirmed by `ai_service.py`, document processing, and billing enforcement.
+- [x] Run repository claim searches, Impeccable detection, pytest, Ruff, lint, build, and npm audit.
+- [x] Commit as `fix(landing): align product claims with implementation`.
 
 ### Task 5: Local SQLite Smoke Verification
 

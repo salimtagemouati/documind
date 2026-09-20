@@ -3,6 +3,7 @@ Billing API Routes — Stripe integration for Pro subscriptions.
 
 POST /api/v1/billing/checkout       — Create Stripe checkout session (redirect URL)
 POST /api/v1/billing/portal         — Create Stripe customer portal session
+GET  /api/v1/billing/config         — Public non-secret payment availability
 GET  /api/v1/billing/status         — Get current subscription status + limits
 POST /api/v1/billing/webhook        — Stripe webhook endpoint (no auth, signature verified)
 """
@@ -23,6 +24,16 @@ from app.services.stripe_service import (
 router = APIRouter(prefix="/billing", tags=["Billing"])
 settings = get_settings()
 logger = get_logger(__name__)
+
+
+@router.get("/config")
+async def billing_config():
+    """Expose only whether the server has enough Stripe config for checkout."""
+    return {
+        "payments_enabled": bool(
+            settings.STRIPE_SECRET_KEY and settings.STRIPE_PRICE_ID_PRO
+        )
+    }
 
 
 @router.post("/checkout")

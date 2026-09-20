@@ -177,6 +177,9 @@ export const analyticsApi = {
 
 // ─── Billing ──────────────────────────────────────────────────────────────────
 export const billingApi = {
+  /** Public, non-secret billing availability */
+  getConfig: () => api.get<{ payments_enabled: boolean }>('/billing/config'),
+
   /** Create Stripe checkout session → returns { checkout_url } */
   createCheckout: () => api.post('/billing/checkout'),
 
