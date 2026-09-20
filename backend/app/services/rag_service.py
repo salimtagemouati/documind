@@ -12,6 +12,7 @@ Architecture:
      no startup wipes, fully multi-tenant via RLS and document foreign keys.
 """
 import os
+import re
 from typing import List, Sequence, Union
 from uuid import UUID
 
@@ -133,9 +134,12 @@ async def build_document_index(db: AsyncSession, document_id: UUID, chunks: List
         logger.warning("no_chunks_to_index", document_id=str(document_id))
         return
 
-    texts = [c["content"] for c in chunks]
-    logger.info("generating_embeddings", document_id=str(document_id), chunk_count=len(chunks))
-    embeddings = await embed_texts(texts)
+    is_sqlite = db.get_bind().dialect.name == "sqlite"
+    embeddings = None
+    if not is_sqlite:
+        texts = [c["content"] for c in chunks]
+        logger.info("generating_embeddings", document_id=str(document_id), chunk_count=len(chunks))
+        embeddings = await embed_texts(texts)
 
     # Fetch existing chunks or insert new ones
     result = await db.execute(
@@ -147,7 +151,7 @@ async def build_document_index(db: AsyncSession, document_id: UUID, chunks: List
     chunk_map = {c.chunk_index: c for c in existing_chunks}
 
     for idx, c_data in enumerate(chunks):
-        vec_list = embeddings[idx].tolist()
+        vec_list = None if embeddings is None else embeddings[idx].tolist()
         chunk_obj = chunk_map.get(c_data["chunk_index"])
         if chunk_obj:
             chunk_obj.embedding = vec_list
@@ -163,7 +167,55 @@ async def build_document_index(db: AsyncSession, document_id: UUID, chunks: List
             db.add(new_chunk)
 
     await db.commit()
-    logger.info("pgvector_index_built", document_id=str(document_id), vectors=len(chunks))
+    logger.info(
+        "document_index_built",
+        document_id=str(document_id),
+        chunks=len(chunks),
+        mode="sqlite-lexical" if is_sqlite else "pgvector",
+    )
+
+
+async def _retrieve_sqlite_chunks(
+    db: AsyncSession,
+    *,
+    doc_ids: list[UUID],
+    user_id: UUID,
+    query: str,
+    top_k: int,
+) -> list[dict]:
+    """Portable lexical fallback for local SQLite development."""
+    statement = (
+        select(DocumentChunk, Document.original_filename, Document.filename)
+        .join(Document, DocumentChunk.document_id == Document.id)
+        .where(DocumentChunk.document_id.in_(doc_ids), Document.user_id == user_id)
+    )
+    rows = (await db.execute(statement)).all()
+    terms = {term for term in re.findall(r"\w+", query.lower()) if len(term) > 2}
+    ranked = []
+    for chunk, original_name, filename in rows:
+        content_terms = set(re.findall(r"\w+", chunk.content.lower()))
+        matches = len(terms & content_terms)
+        if terms and matches == 0:
+            continue
+        score = matches / len(terms) if terms else 0.0
+        ranked.append((score, chunk, original_name or filename or "Document"))
+
+    ranked.sort(key=lambda item: (item[0], -item[1].chunk_index), reverse=True)
+    return [
+        {
+            "chunk_id": str(chunk.id),
+            "document_id": chunk.document_id,
+            "document_name": document_name,
+            "content": chunk.content,
+            "chunk_index": chunk.chunk_index,
+            "page_number": chunk.page_number,
+            "similarity_score": round(score, 4),
+            "vector_rank": None,
+            "text_rank": rank,
+            "rrf_score": round(1 / (RRF_K + rank), 5),
+        }
+        for rank, (score, chunk, document_name) in enumerate(ranked[:top_k], start=1)
+    ]
 
 
 # ─── Retrieval (Dense Vector + Sparse Keyword RRF) ───────────────────────────
@@ -191,6 +243,15 @@ async def retrieve_similar_chunks(
     doc_ids = [document_id] if isinstance(document_id, UUID) else list(document_id)
     if not doc_ids:
         return []
+
+    if db.get_bind().dialect.name == "sqlite":
+        return await _retrieve_sqlite_chunks(
+            db,
+            doc_ids=doc_ids,
+            user_id=user_id,
+            query=query,
+            top_k=top_k,
+        )
 
     query_vec = (await embed_query(query)).tolist()
 

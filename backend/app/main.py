@@ -7,7 +7,8 @@ Responsibilities:
 - Lifespan hooks (database initialization and Redis connectivity)
 - Health check endpoint
 """
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 import sentry_sdk
 from fastapi import FastAPI, Request, status
@@ -21,7 +22,12 @@ from app.api.routes import analytics, auth, billing, documents, query, ws
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.core.logging import configure_logging, get_logger
-from app.db.database import close_db, init_db
+from app.db.database import (
+    check_database_health,
+    close_db,
+    init_db,
+    retry_database_connection,
+)
 
 settings = get_settings()
 configure_logging()
@@ -37,13 +43,23 @@ if settings.SENTRY_DSN:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("startup", app=settings.APP_NAME, env=settings.ENVIRONMENT)
-    await init_db()
+    retry_task: asyncio.Task | None = None
+    database_connected = await init_db()
+    if not database_connected:
+        retry_task = asyncio.create_task(retry_database_connection())
 
-    logger.info("vector_store_active", engine="pgvector", table="document_chunks")
+    vector_engine = "sqlite-lexical" if settings.DATABASE_URL.startswith("sqlite") else "pgvector"
+    logger.info("vector_store_active", engine=vector_engine, table="document_chunks")
 
-    yield
-    await close_db()
-    logger.info("shutdown")
+    try:
+        yield
+    finally:
+        if retry_task is not None:
+            retry_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await retry_task
+        await close_db()
+        logger.info("shutdown")
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -94,13 +110,19 @@ app.include_router(ws.router, prefix=API_PREFIX)
 # ─── Health check ─────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health():
-    """Used by load balancers and uptime monitors."""
-    return {
-        "status": "healthy",
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "environment": settings.ENVIRONMENT,
-    }
+    """Dependency health used by local diagnostics and uptime monitors."""
+    if not await check_database_health():
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "degraded", "db": "unreachable"},
+        )
+    return {"status": "healthy", "db": "connected"}
+
+
+@app.get("/ready", tags=["Health"])
+async def ready():
+    """Cloud Run readiness probe; traffic is accepted only with a working DB."""
+    return await health()
 
 
 @app.get("/", tags=["Root"])

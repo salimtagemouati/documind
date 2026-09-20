@@ -20,7 +20,23 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+
+@compiles(UUID, "sqlite")
+def compile_uuid_for_sqlite(element, compiler, **kwargs):
+    return "VARCHAR(36)"
+
+
+@compiles(ARRAY, "sqlite")
+def compile_array_for_sqlite(element, compiler, **kwargs):
+    return "JSON"
+
+
+@compiles(Vector, "sqlite")
+def compile_vector_for_sqlite(element, compiler, **kwargs):
+    return "TEXT"
 
 
 class Base(DeclarativeBase):
@@ -106,7 +122,7 @@ class Document(Base):
     # AI analysis results (cached)
     summary = Column(Text)
     entities = Column(JSON)                                  # {persons:[], orgs:[], dates:[], ...}
-    keywords = Column(ARRAY(String))
+    keywords = Column(ARRAY(String).with_variant(JSON, "sqlite"))
     sentiment = Column(JSON)                                 # {label, score, confidence}
     language = Column(String(10))
 

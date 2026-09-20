@@ -22,7 +22,7 @@ def test_rrf_scores_dense_and_sparse_ranks_independently():
 
 
 @pytest.mark.asyncio
-async def test_build_and_retrieve_pgvector(db_session):
+async def test_build_and_retrieve_sqlite_fallback(db_session):
     # Setup test user and document
     user = User(
         email="vector_test@example.com",
@@ -51,14 +51,14 @@ async def test_build_and_retrieve_pgvector(db_session):
         {"content": "This is beta content about database consensus.", "chunk_index": 1, "token_count": 7, "page_number": 1},
     ]
 
-    # Build pgvector index in database
+    # SQLite stores chunks without pgvector embeddings and retrieves lexically.
     await build_document_index(db_session, doc_id, chunks)
 
     # Verify chunks exist in DB
     result = await db_session.execute(select(DocumentChunk).where(DocumentChunk.document_id == doc_id))
     db_chunks = result.scalars().all()
     assert len(db_chunks) == 2
-    assert db_chunks[0].embedding is not None
+    assert db_chunks[0].embedding is None
 
     # Retrieve chunks
     retrieved = await retrieve_similar_chunks(
@@ -74,6 +74,7 @@ async def test_build_and_retrieve_pgvector(db_session):
     assert len(retrieved) > 0
     assert "content" in retrieved[0]
     assert "similarity_score" in retrieved[0]
+    assert "distributed systems" in retrieved[0]["content"]
 
     # Test delete_document_index does not raise error
     delete_document_index(doc_id)

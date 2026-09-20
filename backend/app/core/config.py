@@ -27,7 +27,11 @@ class Settings(BaseSettings):
     # Deployment env vars might be parsed as strings by pydantic_settings JSON decode
     # if we use `List[str]`, so we tell pydantic_settings not to automatically parse
     # it as JSON by making the type hint `str | List[str]` initially, then forcing it.
-    ALLOWED_ORIGINS: Any = ["http://localhost:5173", "https://documind.vercel.app"]
+    ALLOWED_ORIGINS: Any = [
+        "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "https://documind.vercel.app",
+    ]
 
     @field_validator("ALLOWED_ORIGINS", "ALLOWED_EXTENSIONS", mode="before")
     @classmethod
@@ -50,7 +54,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_KEY: str              # Server-side admin key
-    DATABASE_URL: str                      # postgresql+asyncpg://user:pass@host/db
+    DATABASE_URL: str = "sqlite+aiosqlite:///./dev.db"
 
     # ─── Storage ────────────────────────────────────────────────────────────
     SUPABASE_BUCKET: str = "documents"
