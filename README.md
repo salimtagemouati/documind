@@ -73,8 +73,13 @@ graph TD
     subgraph Retrieval["RAG Engine (app/services)"]
         PROC[Document Processor & Chunking]
         EMB[Matryoshka Embedding 768d]
-        SEARCH[Vector Search Engine]
-        RERANK[Two-Stage LLM Reranker]
+        VECTOR[pgvector Cosine Search]
+        FTS[PostgreSQL Full-Text Search]
+        RRF[Reciprocal Rank Fusion k=60]
+        RERANK[Batched LLM Reranker]
+        EVIDENCE[Balanced Evidence Selection]
+        SYNTH[Single / Multi-Document Synthesis]
+        ANSWER[Cited Grounded Answer]
     end
 
     subgraph Storage["Persistent Data Tier (Supabase)"]
@@ -87,26 +92,45 @@ graph TD
     subgraph Providers["Multi-Provider AI Gateway (LiteLLM)"]
         GEMINI[Google Gemini 3.5 Flash Lite]
         OPENAI[OpenAI / GPT-4o Optional]
+        ANTHROPIC[Anthropic Claude Optional]
+        GROQ[Groq Optional]
         OLLAMA[Local Ollama Optional]
+    end
+
+    subgraph Evaluation["Evaluation Harness"]
+        METRICS[Precision / Recall / MRR / Groundedness / Refusal]
+        REPORT[Stored Benchmark Report]
     end
 
     UI -->|HTTPS / JWT| ROUTER
     DEMO -->|Guest Token| ROUTER
     ROUTER --> AUTH
     AUTH --> PROC
-    AUTH --> SEARCH
+    AUTH --> VECTOR
+    AUTH --> FTS
 
     PROC -->|Upload PDF/DOCX/TXT| STORE
     PROC -->|800t Chunking + Overlap| EMB
     EMB -->|Matryoshka 768d + L2 Norm| CHUNKS
 
-    SEARCH -->|Cosine Similarity <=>| PG
-    SEARCH --> RERANK
+    VECTOR -->|Cosine Similarity = 1 - distance| PG
+    FTS -->|Bound tsquery parameters| PG
+    VECTOR --> RRF
+    FTS --> RRF
+    RRF --> RERANK
+    RERANK --> EVIDENCE
+    EVIDENCE --> SYNTH
+    SYNTH --> ANSWER
     RERANK -->|Score Candidates 1..10| LIMITER
     LIMITER --> GEMINI
     LIMITER --> OPENAI
+    LIMITER --> ANTHROPIC
+    LIMITER --> GROQ
     LIMITER --> OLLAMA
-    SEARCH -->|Cache Hit| REDIS
+    VECTOR -->|Cache Hit| REDIS
+    ANSWER --> METRICS
+    METRICS --> REPORT
+    REPORT --> MODAL
 ```
 
 ---
@@ -116,16 +140,19 @@ graph TD
 ```mermaid
 flowchart LR
     A["User Query"] --> B["gemini-embedding-001\n(Matryoshka 768d + L2 Norm)"]
-    B --> C["pgvector HNSW Index\n(Cosine Distance <=>)"]
-    C -->|Top 10-15 Candidates| D["Two-Stage Reranker\n(LLM Cross-Relevance Scoring)"]
-    D -->|Filtered & Re-ordered Top 5| E["Grounded Context Assembler\n(Provenance & Source Citations)"]
-    E --> F["gemini-3.5-flash-lite\n(Answer Generation)"]
-    F --> G["Cited Response with Metadata"]
+    B --> C["pgvector HNSW\n(Cosine Similarity)"]
+    A --> D["PostgreSQL Full-Text Search"]
+    C --> E["RRF Fusion k=60"]
+    D --> E
+    E -->|Candidate Pool| F["Batched LLM Relevance Scoring"]
+    F --> G["Balanced Evidence Selection\n(Provenance & Source Citations)"]
+    G --> H["LiteLLM Answer Generation"]
+    H --> I["Cited Response with Metadata"]
 ```
 
 ### Engineering Decisions:
-- **HNSW over IVFFlat**: HNSW delivers significantly higher recall and queries-per-second (QPS) without requiring periodic index retraining after inserts.
-- **Matryoshka Dimensionality Reduction (768d)**: Google's `gemini-embedding-001` natively supports output dimensionality truncation down to 768 dimensions while preserving >99% semantic fidelity, halving database vector footprint and accelerating index scans.
+- **HNSW over IVFFlat**: HNSW supports incremental inserts without a separate index-training step and matches the online ingestion workflow.
+- **Matryoshka Dimensionality Reduction (768d)**: The configured embedding output and PostgreSQL vector column both use 768 dimensions.
 - **Strict Unit Normalization**: Embeddings are \(L_2\) normalized on creation, enabling Euclidean distance, cosine distance, and inner product to be mathematically monotonic.
 
 ---

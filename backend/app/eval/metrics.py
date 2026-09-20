@@ -5,7 +5,7 @@ Quantifies:
 1. Retrieval Precision@K: % of retrieved chunks with relevant evidence
 2. Retrieval Recall@K: % of ground truth required facts covered
 3. MRR (Mean Reciprocal Rank): Rank position of the first relevant chunk
-4. Answer Groundedness: Faithfulness of generated answer to retrieved context
+4. Answer Groundedness: lexical overlap proxy between generated answer and retrieved context
 5. Refusal Accuracy: Correct refusal on out-of-domain / unanswerable questions
 """
 import re
@@ -93,7 +93,7 @@ def check_refusal(answer: str) -> bool:
 
 def evaluate_groundedness(question: str, context: str, answer: str, is_negative: bool = False) -> float:
     """
-    Evaluates whether the answer stays faithful to the context without hallucination drift.
+    Estimates answer support using lexical overlap with the retrieved context.
     Returns score between 0.0 and 1.0.
     """
     if is_negative:
