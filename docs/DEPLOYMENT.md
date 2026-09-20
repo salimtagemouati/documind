@@ -59,6 +59,8 @@ cd backend
 
 The first invocation validates configuration and prints a secret-free plan. Add `--apply` only after reviewing it:
 
+Validation rejects template values, SQLite database URLs, local-only frontend origins, and a localhost Redis URL before any secret version or Cloud Run revision is created.
+
 ```bash
 .venv/bin/python ../scripts/deploy_cloud_run.py \
   --project "$GOOGLE_CLOUD_PROJECT" \

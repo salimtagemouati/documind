@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import dotenv_values
 
@@ -73,6 +74,71 @@ PASSTHROUGH_NON_SECRETS = {
     "STRIPE_FREE_QUERY_LIMIT",
     "FRONTEND_URL",
 }
+
+REQUIRED_CONFIGURATION = {
+    *REQUIRED_SECRETS,
+    "SUPABASE_URL",
+    "ALLOWED_ORIGINS",
+    "FRONTEND_URL",
+}
+
+
+def _is_placeholder(value: str) -> bool:
+    normalized = value.strip().lower()
+    return (
+        not normalized
+        or "replace_me" in normalized
+        or "replace-me" in normalized
+        or "your-project" in normalized
+        or "placeholder" in normalized
+        or ".example." in normalized
+        or normalized.endswith(".invalid")
+        or ".invalid/" in normalized
+    )
+
+
+def _is_local_url(value: str) -> bool:
+    hostname = (urlparse(value).hostname or "").lower()
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def invalid_configuration_keys(values: dict[str, str]) -> list[str]:
+    """Return names of missing, template, or local-only production settings."""
+    invalid = {
+        key
+        for key in REQUIRED_CONFIGURATION
+        if _is_placeholder(values.get(key, ""))
+    }
+
+    database_url = values.get("DATABASE_URL", "")
+    if database_url.lower().startswith("sqlite"):
+        invalid.add("DATABASE_URL")
+    else:
+        database_host = (urlparse(database_url).hostname or "").lower()
+        if (
+            not database_host
+            or database_host == "host"
+            or "example" in database_host
+            or "replace_me" in database_host
+            or "replace-me" in database_host
+            or "your-project" in database_host
+            or database_host.endswith(".invalid")
+        ):
+            invalid.add("DATABASE_URL")
+
+    frontend_url = values.get("FRONTEND_URL", "")
+    if frontend_url and _is_local_url(frontend_url):
+        invalid.add("FRONTEND_URL")
+
+    origins = [origin.strip() for origin in values.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
+    if origins and not any(not _is_local_url(origin) for origin in origins):
+        invalid.add("ALLOWED_ORIGINS")
+
+    redis_url = values.get("REDIS_URL", "")
+    if redis_url and (_is_placeholder(redis_url) or _is_local_url(redis_url)):
+        invalid.add("REDIS_URL")
+
+    return sorted(invalid)
 
 
 def run(command: list[str], *, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -154,10 +220,12 @@ def main() -> int:
         return 2
 
     values = {key: value for key, value in dotenv_values(ENV_FILE).items() if value}
-    missing = sorted(key for key in REQUIRED_SECRETS if not values.get(key))
-    missing.extend(key for key in ("SUPABASE_URL", "ALLOWED_ORIGINS", "FRONTEND_URL") if not values.get(key))
-    if missing:
-        print("Missing required backend/.env variables: " + ", ".join(missing), file=sys.stderr)
+    invalid = invalid_configuration_keys(values)
+    if invalid:
+        print(
+            "Missing or non-production backend/.env variables: " + ", ".join(invalid),
+            file=sys.stderr,
+        )
         return 2
 
     project = args.project or configured_project()
