@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { getApiErrorMessage, queryApi } from '../../services/api'
-import toast from 'react-hot-toast'
+import { showErrorToast } from '../../services/toasts'
 import type { DocumentItem, MultiQueryAnswer } from '../../types'
 
 interface Props {
@@ -37,7 +37,7 @@ export default function MultiDocViewer({ selectedDocs, onDeselectDoc, onClearAll
     } catch (error: unknown) {
       const message = getApiErrorMessage(error, 'Multi-document query failed. Check the API and try again.')
       setQueryError(message)
-      toast.error(message)
+      showErrorToast(message, 'multi-document-query-error')
     } finally {
       setAsking(false)
     }

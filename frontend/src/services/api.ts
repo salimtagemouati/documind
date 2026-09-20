@@ -6,16 +6,79 @@
 import axios, { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 
 const BASE_URL = import.meta.env.VITE_API_URL || '/api/v1'
+const HEALTH_URL = (() => {
+  if (BASE_URL.startsWith('/')) return '/health'
+  const url = new URL(BASE_URL)
+  url.pathname = '/health'
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+})()
+
+const sleep = (milliseconds: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  const handleAbort = () => {
+    window.clearTimeout(timeoutId)
+    reject(new DOMException('Request aborted', 'AbortError'))
+  }
+  const timeoutId = window.setTimeout(() => {
+    signal?.removeEventListener('abort', handleAbort)
+    resolve()
+  }, milliseconds)
+  signal?.addEventListener('abort', handleAbort, { once: true })
+})
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
   if (!axios.isAxiosError(error)) return fallback
+  if (!error.response) return 'Serveur injoignable, réessaie dans un instant'
+
+  if (error.response.status === 429) {
+    const retryAfter = Number(error.response.headers['retry-after'])
+    const seconds = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.ceil(retryAfter) : 60
+    return `Trop de requêtes, réessaie dans ${seconds} s`
+  }
+
   const detail = error.response?.data?.detail
+  if (
+    error.response.status === 403
+    && typeof detail === 'string'
+    && /demo|read.?only/i.test(detail)
+  ) {
+    return 'Action non disponible en mode démo'
+  }
   if (typeof detail === 'string') return detail
   return fallback
 }
 
 export function getApiErrorStatus(error: unknown): number | undefined {
   return axios.isAxiosError(error) ? error.response?.status : undefined
+}
+
+export async function prewarmApi(): Promise<void> {
+  try {
+    await axios.get(HEALTH_URL, { timeout: 5000 })
+  } catch {
+    // Prewarming is intentionally silent; the demo route owns recovery UI.
+  }
+}
+
+export async function waitForApi(timeoutMs = 60_000, signal?: AbortSignal): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  let lastError: unknown = new Error('API unavailable')
+
+  while (Date.now() < deadline) {
+    if (signal?.aborted) throw new DOMException('Request aborted', 'AbortError')
+    try {
+      await axios.get(HEALTH_URL, { timeout: 5000, signal })
+      return
+    } catch (error: unknown) {
+      lastError = error
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) break
+      await sleep(Math.min(2000, remaining), signal)
+    }
+  }
+
+  throw lastError
 }
 
 // ─── Axios instance ───────────────────────────────────────────────────────────

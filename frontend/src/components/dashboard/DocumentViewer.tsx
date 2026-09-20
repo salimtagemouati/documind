@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { documentsApi, getApiErrorMessage, queryApi } from '../../services/api'
-import toast from 'react-hot-toast'
+import { documentsApi, queryApi } from '../../services/api'
+import { showApiError } from '../../services/toasts'
 import type { DocumentAnalysis, DocumentItem, QueryAnswer, QueryHistoryItem } from '../../types'
 
 interface Props {
@@ -36,7 +36,7 @@ export default function DocumentViewer({ doc }: Props) {
       const { data } = await queryApi.ask(doc.id, q)
       setAnswers(prev => [data, ...prev])
     } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, 'Query failed'))
+      showApiError(error, 'Query failed', `document-query-error-${doc.id}`)
     } finally {
       setAsking(false)
     }

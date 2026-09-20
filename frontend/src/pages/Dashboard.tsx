@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { documentsApi, analyticsApi, billingApi, getApiErrorMessage, getApiErrorStatus } from '../services/api'
+import { documentsApi, analyticsApi, billingApi, getApiErrorStatus } from '../services/api'
+import { showApiError } from '../services/toasts'
 import { useAuthStore } from '../store/authStore'
 import { useMultiDocumentProgress } from '../hooks/useDocumentProgress'
 import UploadZone from '../components/dashboard/UploadZone'
@@ -69,7 +70,7 @@ export default function Dashboard() {
       if (getApiErrorStatus(error) === 429) {
         setUpgradePrompt('documents')
       } else {
-        toast.error(getApiErrorMessage(error, 'Upload failed'))
+        showApiError(error, 'Upload failed', 'document-upload-error')
       }
     },
   })

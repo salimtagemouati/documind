@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { prewarmApi } from '../services/api'
 import './LandingPage.css'
 
 /* ─── SVG Icon Components ─── */
@@ -183,6 +184,10 @@ function RevealSection({ children, className = '' }: { children: React.ReactNode
 
 /* ─── LANDING PAGE COMPONENT ─── */
 export default function LandingPage() {
+  useEffect(() => {
+    void prewarmApi()
+  }, [])
+
   return (
     <div className="landing">
       {/* ─── NAVBAR ─── */}

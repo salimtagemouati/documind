@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { billingApi, getApiErrorMessage } from '../../services/api'
-import toast from 'react-hot-toast'
+import { billingApi } from '../../services/api'
+import { showApiError } from '../../services/toasts'
 
 interface Props {
   type: 'documents' | 'queries'
@@ -18,7 +18,7 @@ export default function UpgradePrompt({ type, onClose }: Props) {
       window.location.href = res.data.checkout_url
     },
     onError: (error: unknown) => {
-      toast.error(getApiErrorMessage(error, 'Unable to start checkout'))
+      showApiError(error, 'Unable to start checkout', 'upgrade-checkout-error')
     },
   })
 

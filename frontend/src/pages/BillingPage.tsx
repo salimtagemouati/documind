@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { billingApi, getApiErrorMessage } from '../services/api'
+import { billingApi } from '../services/api'
+import { showApiError } from '../services/toasts'
 import { useAuthStore } from '../store/authStore'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useEffect } from 'react'
@@ -41,7 +42,7 @@ export default function BillingPage() {
       window.location.href = res.data.checkout_url
     },
     onError: (error: unknown) => {
-      toast.error(getApiErrorMessage(error, 'Unable to start checkout'))
+      showApiError(error, 'Unable to start checkout', 'billing-checkout-error')
     },
   })
 
@@ -51,7 +52,7 @@ export default function BillingPage() {
       window.location.href = res.data.portal_url
     },
     onError: (error: unknown) => {
-      toast.error(getApiErrorMessage(error, 'Unable to open billing portal'))
+      showApiError(error, 'Unable to open billing portal', 'billing-portal-error')
     },
   })
 

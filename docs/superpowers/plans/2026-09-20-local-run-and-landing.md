@@ -91,14 +91,14 @@
 - Produces: `getApiErrorMessage(error, fallback)`, `waitForApi(timeoutMs)`, and `showApiError(error, fallback, id)`.
 - Consumes: `/health`, Axios errors, `Retry-After`, and existing Zustand authentication.
 
-- [ ] Add a deterministic error classifier for unreachable API, 429 retry timing, demo 403, and generic failures.
-- [ ] Add toast de-duplication by stable ID and a maximum of three visible error toasts.
-- [ ] Add health prewarming on landing load without visible failure.
-- [ ] Make the demo route poll health for at most 60 seconds, show the cold-start message after 3 seconds, prevent duplicate attempts, and provide an explicit retry action.
-- [ ] Route component errors through the centralized toast helper and keep buttons disabled during requests.
-- [ ] Proxy `/health` in Vite development and document manual toast/cold-start checks because the repository has no Vitest/RTL harness.
-- [ ] Run Impeccable detection, frontend lint/build, backend pytest, and Ruff.
-- [ ] Commit as `fix(frontend): handle API cold starts and dedupe errors`.
+- [x] Add a deterministic error classifier for unreachable API, 429 retry timing, demo 403, and generic failures.
+- [x] Add toast de-duplication by stable ID and a maximum of three visible error toasts.
+- [x] Add health prewarming on landing load without visible failure.
+- [x] Make the demo route poll health for at most 60 seconds, show the cold-start message after 3 seconds, prevent duplicate attempts, and provide an explicit retry action.
+- [x] Route component errors through the centralized toast helper and keep buttons disabled during requests.
+- [x] Proxy `/health` in Vite development and document manual toast/cold-start checks because the repository has no Vitest/RTL harness.
+- [x] Run Impeccable detection, frontend lint/build, backend pytest, and Ruff.
+- [x] Commit as `fix(frontend): handle API cold starts and dedupe errors`.
 
 ### Task 4: Honest Landing Content and Payment State
 
