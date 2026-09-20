@@ -23,7 +23,7 @@ litellm==1.101.0
 tiktoken==0.14.0
 
 # Vector processing & math
-numpy==2.5.3
+numpy==2.4.6
 
 # Document processing
 pypdf==6.19.0
