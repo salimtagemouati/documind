@@ -21,6 +21,8 @@ frontend/.env
 
 # Data — too large for git
 backend/data/
+backend/dev.db
+backend/dev.db-*
 *.faiss
 *.meta
 
@@ -52,4 +54,3 @@ logs/
 # Evaluation Cache
 .eval_cache/
 backend/.eval_cache/
-

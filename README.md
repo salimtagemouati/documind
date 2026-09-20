@@ -21,6 +21,7 @@
 | 🌐 **Web App (Vercel)** | [documind-frontend.vercel.app](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app) | Production SPA with Interactive Benchmark Modal |
 | 🚀 **Instant Demo Mode** | [Live Demo Access](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app/demo) | 1-click recruiter demo with preloaded enterprise contracts |
 | ⚙️ **Backend deployment** | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Cloud Run deployment and cutover guide |
+| 💻 **Local development** | [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md) | SQLite quickstart and Supabase connection guidance |
 | 📊 **Evaluation Methodology** | [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) | Audit status, formulas, legacy artifact, and limitations |
 
 ---
@@ -170,8 +171,8 @@ flowchart LR
 
 ### Prerequisites
 - Python 3.11+ and Node.js 20+
-- [Google AI Studio API Key](https://aistudio.google.com/) (Free tier)
-- [Supabase Project](https://supabase.com/) with pgvector enabled
+- A provider API key is needed only for AI generation in local SQLite mode
+- A [Supabase Project](https://supabase.com/) with pgvector is required for production retrieval
 
 ### Local Setup (Without Docker)
 
@@ -183,10 +184,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env with GOOGLE_API_KEY and Supabase / database credentials
-
-# Run database migrations / initialization
-python -m app.db.database
+# Replace SECRET_KEY. Add provider credentials only when testing AI generation.
+# The default DATABASE_URL creates backend/dev.db automatically.
 
 # Start backend server
 uvicorn app.main:app --reload --port 8000
@@ -201,6 +200,7 @@ npm run dev
 ```
 
 App runs at `http://localhost:5173`, API docs at `http://localhost:8000/api/docs`.
+See [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md) for SQLite smoke checks, Vite preview, and Supabase pooler configuration.
 
 ### Full-Stack Docker Setup
 ```bash
