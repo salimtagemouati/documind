@@ -1,6 +1,12 @@
 from unittest.mock import MagicMock, patch
+
 import pytest
-from app.services.ai_service import analyze_sentiment, extract_entities, summarize_document
+
+from app.services.ai_service import (
+    analyze_sentiment,
+    extract_entities,
+    summarize_document,
+)
 
 
 @pytest.fixture

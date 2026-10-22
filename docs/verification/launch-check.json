@@ -1,0 +1,20 @@
+{
+  "deployment_ready": false,
+  "required_configuration": [
+    "ALLOWED_ORIGINS",
+    "DATABASE_URL",
+    "FRONTEND_URL",
+    "REDIS_URL",
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_KEY",
+    "SUPABASE_URL"
+  ],
+  "target": "Vercel frontend / Cloud Run backend / Supabase PostgreSQL and private Storage / TLS Redis",
+  "model": "gemini/gemini-3.5-flash",
+  "reranking": "false",
+  "requires_approval": [
+    "cloud project and budget",
+    "production migration",
+    "public deployment"
+  ]
+}

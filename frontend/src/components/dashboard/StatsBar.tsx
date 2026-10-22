@@ -19,14 +19,14 @@ export default function StatsBar({ stats }: { stats?: Stats }) {
   return (
     <div style={{
       display: 'flex', gap: '0', borderBottom: '1px solid rgba(255,255,255,0.07)',
-      background: '#0a0d15', flexShrink: 0
+      background: '#0a0d15', flexShrink: 0, overflowX: 'auto'
     }}>
       {items.map((item, i) => (
         <div key={i} style={{
-          padding: '8px 20px', borderRight: '1px solid rgba(255,255,255,0.05)',
+          padding: '8px 20px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.05)',
           display: 'flex', flexDirection: 'column', gap: '2px'
         }}>
-          <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#374151', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             {item.label}
           </div>
           <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#818cf8', fontFamily: 'monospace' }}>

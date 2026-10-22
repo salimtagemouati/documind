@@ -4,10 +4,12 @@ DocuMind FastAPI Application — main entrypoint.
 Responsibilities:
 - Register all routers
 - Configure CORS, rate limiting, error handlers
-- Lifespan hooks (DB init, Redis ping, FAISS cleanup)
+- Lifespan hooks (database initialization and Redis connectivity)
 - Health check endpoint
 """
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI, Request, status
@@ -21,7 +23,13 @@ from app.api.routes import analytics, auth, billing, documents, query, ws
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.core.logging import configure_logging, get_logger
-from app.db.database import close_db, init_db
+from app.db.database import (
+    check_database_health,
+    check_schema_health,
+    close_db,
+    init_db,
+    retry_database_connection,
+)
 
 settings = get_settings()
 configure_logging()
@@ -37,13 +45,23 @@ if settings.SENTRY_DSN:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("startup", app=settings.APP_NAME, env=settings.ENVIRONMENT)
-    await init_db()
+    retry_task: asyncio.Task | None = None
+    database_connected = await init_db()
+    if not database_connected:
+        retry_task = asyncio.create_task(retry_database_connection())
 
-    logger.info("vector_store_active", engine="pgvector", table="document_chunks")
+    vector_engine = "sqlite-lexical" if settings.DATABASE_URL.startswith("sqlite") else "pgvector"
+    logger.info("vector_store_active", engine=vector_engine, table="document_chunks")
 
-    yield
-    await close_db()
-    logger.info("shutdown")
+    try:
+        yield
+    finally:
+        if retry_task is not None:
+            retry_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await retry_task
+        await close_db()
+        logger.info("shutdown")
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -73,7 +91,7 @@ app.add_middleware(
 # ─── Global error handlers ────────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error("unhandled_exception", path=request.url.path, error=str(exc))
+    logger.error("unhandled_exception", path=request.url.path, error_type=type(exc).__name__)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "An internal error occurred. Our team has been notified."},
@@ -94,19 +112,48 @@ app.include_router(ws.router, prefix=API_PREFIX)
 # ─── Health check ─────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health():
-    """Used by load balancers and uptime monitors."""
-    return {
-        "status": "healthy",
-        "app": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "environment": settings.ENVIRONMENT,
-    }
+    """Dependency health used by local diagnostics and uptime monitors."""
+    if not await check_database_health():
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "degraded", "db": "unreachable"},
+        )
+    return {"status": "healthy", "db": "connected"}
 
 
-@app.get("/", tags=["Root"])
+@app.get("/ready", tags=["Health"])
+async def ready():
+    """Cloud Run readiness probe; traffic is accepted only with a working DB."""
+    database_health = await health()
+    if isinstance(database_health, JSONResponse):
+        return database_health
+    if settings.ENVIRONMENT == "production" and not await check_schema_health():
+        return JSONResponse(status_code=503, content={"status": "degraded", "schema": "unavailable"})
+    if settings.ENVIRONMENT == "production" and settings.REDIS_URL:
+        from app.services.cache_service import get_redis
+        try:
+            cache = await get_redis()
+            if cache is None or not await asyncio.wait_for(cache.ping(), timeout=3):
+                raise ConnectionError("Shared cache unavailable")
+        except Exception:
+            return JSONResponse(status_code=503, content={"status": "degraded", "cache": "unreachable"})
+    return database_health
+
+
 async def root():
     return {
         "name": settings.APP_NAME,
         "docs": "/api/docs",
         "health": "/health",
     }
+
+
+if settings.FRONTEND_DIST_DIR:
+    from app.core.spa import SPAStaticFiles
+
+    frontend_dir = Path(settings.FRONTEND_DIST_DIR).resolve()
+    if not (frontend_dir / "index.html").is_file():
+        raise RuntimeError("FRONTEND_DIST_DIR must contain a built index.html")
+    app.mount("/", SPAStaticFiles(directory=frontend_dir, html=True), name="frontend")
+else:
+    app.get("/", tags=["Root"])(root)

@@ -12,6 +12,7 @@ Architecture:
      no startup wipes, fully multi-tenant via RLS and document foreign keys.
 """
 import os
+import re
 from typing import List, Sequence, Union
 from uuid import UUID
 
@@ -29,6 +30,18 @@ settings = get_settings()
 logger = get_logger(__name__)
 
 EMBEDDING_DIM = settings.EMBEDDING_DIM
+RRF_K = 60
+
+
+def reciprocal_rank_fusion_score(
+    *, vector_rank: int | None, text_rank: int | None, k: int = RRF_K
+) -> float:
+    """Combine independent result-list ranks using standard RRF."""
+    return sum(
+        1.0 / (k + rank)
+        for rank in (vector_rank, text_rank)
+        if rank is not None
+    )
 
 
 # ─── Embedding Helpers ────────────────────────────────────────────────────────
@@ -68,10 +81,12 @@ async def embed_texts(texts: List[str]) -> np.ndarray:
             batch_embeddings = [item["embedding"] for item in response.data]
             all_embeddings.extend(batch_embeddings)
         except Exception as e:
-            logger.error("embedding_failed", error=str(e), model=settings.EMBEDDING_MODEL, batch_size=len(batch))
+            logger.error("embedding_failed", error_type=type(e).__name__, model=settings.EMBEDDING_MODEL, batch_size=len(batch))
             raise
 
     arr = np.array(all_embeddings, dtype=np.float32)
+    if arr.shape != (len(texts), EMBEDDING_DIM) or not np.isfinite(arr).all() or np.any(np.linalg.norm(arr, axis=1) == 0):
+        raise ValueError("Embedding provider returned invalid dimensions or values")
     # Re-normalize vectors to unit norm (Matryoshka truncation breaks unit length)
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
@@ -101,9 +116,11 @@ async def embed_query(query: str) -> np.ndarray:
         response = await call_with_limits(lambda: litellm.aembedding(**kwargs))
         vec = np.array(response.data[0]["embedding"], dtype=np.float32)
     except Exception as e:
-        logger.error("query_embedding_failed", error=str(e), model=settings.EMBEDDING_MODEL)
+        logger.error("query_embedding_failed", error_type=type(e).__name__, model=settings.EMBEDDING_MODEL)
         raise
 
+    if vec.shape != (EMBEDDING_DIM,) or not np.isfinite(vec).all() or not np.linalg.norm(vec):
+        raise ValueError("Embedding provider returned an invalid query vector")
     # Strictly re-normalize to unit vector
     norm = np.linalg.norm(vec)
     if norm > 0:
@@ -121,9 +138,12 @@ async def build_document_index(db: AsyncSession, document_id: UUID, chunks: List
         logger.warning("no_chunks_to_index", document_id=str(document_id))
         return
 
-    texts = [c["content"] for c in chunks]
-    logger.info("generating_embeddings", document_id=str(document_id), chunk_count=len(chunks))
-    embeddings = await embed_texts(texts)
+    is_sqlite = db.get_bind().dialect.name == "sqlite"
+    embeddings = None
+    if not is_sqlite:
+        texts = [c["content"] for c in chunks]
+        logger.info("generating_embeddings", document_id=str(document_id), chunk_count=len(chunks))
+        embeddings = await embed_texts(texts)
 
     # Fetch existing chunks or insert new ones
     result = await db.execute(
@@ -134,11 +154,19 @@ async def build_document_index(db: AsyncSession, document_id: UUID, chunks: List
     existing_chunks = result.scalars().all()
     chunk_map = {c.chunk_index: c for c in existing_chunks}
 
+    incoming_indices = {chunk["chunk_index"] for chunk in chunks}
+    for old_chunk in existing_chunks:
+        if old_chunk.chunk_index not in incoming_indices:
+            await db.delete(old_chunk)
+
     for idx, c_data in enumerate(chunks):
-        vec_list = embeddings[idx].tolist()
+        vec_list = None if embeddings is None else embeddings[idx].tolist()
         chunk_obj = chunk_map.get(c_data["chunk_index"])
         if chunk_obj:
             chunk_obj.embedding = vec_list
+            chunk_obj.content = c_data["content"]
+            chunk_obj.token_count = c_data["token_count"]
+            chunk_obj.page_number = c_data.get("page_number")
         else:
             new_chunk = DocumentChunk(
                 document_id=document_id,
@@ -151,17 +179,66 @@ async def build_document_index(db: AsyncSession, document_id: UUID, chunks: List
             db.add(new_chunk)
 
     await db.commit()
-    logger.info("pgvector_index_built", document_id=str(document_id), vectors=len(chunks))
+    logger.info(
+        "document_index_built",
+        document_id=str(document_id),
+        chunks=len(chunks),
+        mode="sqlite-lexical" if is_sqlite else "pgvector",
+    )
+
+
+async def _retrieve_sqlite_chunks(
+    db: AsyncSession,
+    *,
+    doc_ids: list[UUID],
+    user_id: UUID,
+    query: str,
+    top_k: int,
+) -> list[dict]:
+    """Portable lexical fallback for local SQLite development."""
+    statement = (
+        select(DocumentChunk, Document.original_filename, Document.filename)
+        .join(Document, DocumentChunk.document_id == Document.id)
+        .where(DocumentChunk.document_id.in_(doc_ids), Document.user_id == user_id)
+    )
+    rows = (await db.execute(statement)).all()
+    terms = {term for term in re.findall(r"\w+", query.lower()) if len(term) > 2}
+    ranked = []
+    for chunk, original_name, filename in rows:
+        content_terms = set(re.findall(r"\w+", chunk.content.lower()))
+        matches = len(terms & content_terms)
+        if terms and matches == 0:
+            continue
+        score = matches / len(terms) if terms else 0.0
+        ranked.append((score, chunk, original_name or filename or "Document"))
+
+    ranked.sort(key=lambda item: (item[0], -item[1].chunk_index), reverse=True)
+    return [
+        {
+            "chunk_id": str(chunk.id),
+            "document_id": chunk.document_id,
+            "document_name": document_name,
+            "content": chunk.content,
+            "chunk_index": chunk.chunk_index,
+            "page_number": chunk.page_number,
+            "similarity_score": round(score, 4),
+            "vector_rank": None,
+            "text_rank": rank,
+            "rrf_score": round(1 / (RRF_K + rank), 5),
+        }
+        for rank, (score, chunk, document_name) in enumerate(ranked[:top_k], start=1)
+    ]
 
 
 # ─── Retrieval (Dense Vector + Sparse Keyword RRF) ───────────────────────────
 async def retrieve_similar_chunks(
     db: AsyncSession,
     document_id: Union[UUID, Sequence[UUID]],
+    user_id: UUID,
     query: str,
-    top_k: int = None,
-    threshold: float = None,
-    enable_hybrid: bool = None,
+    top_k: int | None = None,
+    threshold: float | None = None,
+    enable_hybrid: bool | None = None,
 ) -> List[dict]:
     """
     Retrieves the most relevant chunks using pgvector cosine distance and optional
@@ -171,13 +248,22 @@ async def retrieve_similar_chunks(
       - Single document queries (document_id is UUID)
       - Multi-document queries (document_id is Sequence[UUID])
     """
-    top_k = top_k or settings.RAG_TOP_K
-    threshold = threshold or settings.RAG_SIMILARITY_THRESHOLD
+    top_k = settings.RAG_TOP_K if top_k is None else top_k
+    threshold = settings.RAG_SIMILARITY_THRESHOLD if threshold is None else threshold
     enable_hybrid = settings.ENABLE_HYBRID_SEARCH if enable_hybrid is None else enable_hybrid
 
     doc_ids = [document_id] if isinstance(document_id, UUID) else list(document_id)
     if not doc_ids:
         return []
+
+    if db.get_bind().dialect.name == "sqlite":
+        return await _retrieve_sqlite_chunks(
+            db,
+            doc_ids=doc_ids,
+            user_id=user_id,
+            query=query,
+            top_k=top_k,
+        )
 
     query_vec = (await embed_query(query)).tolist()
 
@@ -194,6 +280,7 @@ async def retrieve_similar_chunks(
         )
         .join(Document, DocumentChunk.document_id == Document.id)
         .where(DocumentChunk.document_id.in_(doc_ids))
+        .where(Document.user_id == user_id)
         .where(DocumentChunk.embedding.is_not(None))
         .order_by(DocumentChunk.embedding.cosine_distance(query_vec))
         .limit(top_k * 2 if enable_hybrid else top_k)
@@ -220,20 +307,24 @@ async def retrieve_similar_chunks(
         }
 
     # ── 2. Sparse Lexical Search (Hybrid FTS) ──────────────────────────────────
-    if enable_hybrid and candidates:
+    if enable_hybrid:
         try:
             # Clean query terms for plain tsquery
             clean_q = " ".join([w for w in query.split() if len(w) > 2])
             if clean_q:
                 fts_stmt = (
                     select(
-                        DocumentChunk.id,
+                        DocumentChunk,
+                        Document.original_filename,
+                        Document.filename,
                         func.ts_rank_cd(
                             func.to_tsvector("english", DocumentChunk.content),
                             func.plainto_tsquery("english", clean_q),
                         ).label("text_rank_score")
                     )
+                    .join(Document, DocumentChunk.document_id == Document.id)
                     .where(DocumentChunk.document_id.in_(doc_ids))
+                    .where(Document.user_id == user_id)
                     .where(
                         func.to_tsvector("english", DocumentChunk.content).op("@@")(
                             func.plainto_tsquery("english", clean_q)
@@ -245,26 +336,35 @@ async def retrieve_similar_chunks(
                     ).desc())
                     .limit(top_k * 2)
                 )
-                fts_res = await db.execute(fts_stmt)
-                fts_rows = fts_res.all()
-                for rank, (chunk_id, _) in enumerate(fts_rows, start=1):
-                    cid_str = str(chunk_id)
-                    if cid_str in candidates:
+                async with db.begin_nested():
+                    fts_res = await db.execute(fts_stmt)
+                    fts_rows = fts_res.all()
+                for rank, (chunk, orig_name, fname, _) in enumerate(fts_rows, start=1):
+                    cid_str = str(chunk.id)
+                    if cid_str not in candidates:
+                        candidates[cid_str] = {
+                            "chunk_id": cid_str,
+                            "document_id": chunk.document_id,
+                            "document_name": orig_name or fname or "Document",
+                            "content": chunk.content,
+                            "chunk_index": chunk.chunk_index,
+                            "page_number": chunk.page_number,
+                            "similarity_score": 0.0,
+                            "vector_rank": None,
+                            "text_rank": rank,
+                        }
+                    else:
                         candidates[cid_str]["text_rank"] = rank
         except Exception as fts_err:
-            logger.debug("fts_hybrid_skipped", error=str(fts_err))
+            logger.debug("fts_hybrid_skipped", error_type=type(fts_err).__name__)
 
     # ── 3. Reciprocal Rank Fusion (RRF) Scoring ──────────────────────────────
     results = []
-    k_const = 60
     for c in candidates.values():
         vec_r = c["vector_rank"]
         txt_r = c["text_rank"]
 
-        # RRF formula
-        rrf = 1.0 / (k_const + vec_r)
-        if txt_r is not None:
-            rrf += 1.0 / (k_const + txt_r)
+        rrf = reciprocal_rank_fusion_score(vector_rank=vec_r, text_rank=txt_r)
 
         c["rrf_score"] = round(rrf, 5)
         # Keep chunk if vector similarity is reasonable or exact keyword match was found
@@ -278,7 +378,7 @@ async def retrieve_similar_chunks(
     logger.info(
         "chunks_retrieved_pgvector",
         doc_count=len(doc_ids),
-        query_preview=query[:60],
+        query_length=len(query),
         retrieved=len(final_chunks),
     )
     return final_chunks

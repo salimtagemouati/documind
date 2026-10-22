@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
   PYTHON_VERSION: "3.11"
 
 jobs:
@@ -42,9 +42,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Lint with ruff
-        run: |
-          pip install ruff
-          ruff check app/ --select E,F,I --ignore E501
+        run: ruff check app/ tests/ --select E,F,I --ignore E501
 
       - name: Check Python syntax (AST parse)
         run: |
@@ -62,6 +60,11 @@ jobs:
           print(f'✓ All Python files parse OK')
           "
 
+      - name: Type-check backend services
+        run: >-
+          mypy app/services/rag_service.py app/services/rerank_service.py
+          app/services/ai_service.py --follow-imports=skip --ignore-missing-imports
+
       - name: Run tests
         env:
           SECRET_KEY: ci-test-secret-key-do-not-use-in-production-long-enough
@@ -76,7 +79,16 @@ jobs:
           STRIPE_SECRET_KEY: ""
           STRIPE_PUBLISHABLE_KEY: ""
           STRIPE_WEBHOOK_SECRET: ""
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -q --cov=app --cov-report=term-missing --cov-fail-under=60
+
+      - name: Fresh-process local smoke test
+        run: python ../scripts/smoke_test.py
+
+      - name: Local retrieval provenance evaluation
+        run: python ../scripts/evaluate_local.py
+
+      - name: PostgreSQL pgvector integration
+        run: python ../scripts/check_pgvector.py
 
   # ─── Frontend: typecheck + build ────────────────────────────
   frontend:
@@ -98,13 +110,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Frontend component tests
+        run: npm test
+
       - name: TypeScript type check
         run: npx tsc --noEmit
 
       - name: Build production bundle
         run: npm run build
         env:
-          VITE_API_URL: https://documind-api.onrender.com/api/v1
+          VITE_API_URL: https://api.example.invalid/api/v1
 
       - name: Report bundle size
         run: |
@@ -126,6 +144,4 @@ jobs:
         run: docker build -t documind-api:ci ./backend
 
       - name: Verify image
-        run: |
-          docker run --rm documind-api:ci python -c "import app; print('✓ App module importable')" || true
-          echo "✓ Docker image built successfully"
+        run: python scripts/check_container.py documind-api:ci

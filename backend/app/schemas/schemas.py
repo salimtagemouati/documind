@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 
 # ─── Auth ────────────────────────────────────────────────────────────────────
@@ -20,6 +20,8 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def password_strength(cls, v: str) -> str:
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 UTF-8 bytes")
         if not any(c.isupper() for c in v):
             raise ValueError("Password must contain at least one uppercase letter")
         if not any(c.isdigit() for c in v):
@@ -53,6 +55,7 @@ class UserPublic(BaseModel):
     documents_processed: int
     queries_made: int
     created_at: datetime
+    is_demo: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -68,6 +71,8 @@ class DocumentUploadResponse(BaseModel):
 
 
 class DocumentMeta(BaseModel):
+    error_message: Optional[str] = None
+    original_filename: Optional[str] = None
     id: UUID
     filename: str
     file_type: str
@@ -101,6 +106,13 @@ class SentimentResult(BaseModel):
     explanation: str
 
 
+class DocumentInsights(BaseModel):
+    summary: str = Field(min_length=1, max_length=6000)
+    entities: EntityExtractionResult
+    sentiment: SentimentResult
+    keywords: List[str] = Field(max_length=15)
+
+
 class DocumentAnalysis(BaseModel):
     id: UUID
     filename: str
@@ -119,7 +131,18 @@ class DocumentAnalysis(BaseModel):
 
 
 # ─── RAG / Q&A ───────────────────────────────────────────────────────────────
+class ConversationTurn(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
+    answer: str = Field(min_length=1, max_length=4000)
+
+
 class QueryRequest(BaseModel):
+    @field_validator("question", mode="before")
+    @classmethod
+    def trim_question(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
+    history: List[ConversationTurn] = Field(default_factory=list, max_length=3)
     question: str = Field(min_length=5, max_length=1000)
     document_id: UUID
     max_tokens: int = Field(default=800, ge=100, le=2000)
@@ -146,10 +169,22 @@ class QueryResponse(BaseModel):
 
 # ─── Multi-Document RAG ──────────────────────────────────────────────────────
 class MultiQueryRequest(BaseModel):
+    @field_validator("question", mode="before")
+    @classmethod
+    def trim_question(cls, value):
+        return value.strip() if isinstance(value, str) else value
+
     document_ids: List[UUID] = Field(min_length=2, max_length=5)
     question: str = Field(min_length=1, max_length=2000)
     max_tokens: int = Field(default=1000, ge=100, le=4000)
     enable_rerank: bool = Field(default=True)
+
+    @field_validator("document_ids")
+    @classmethod
+    def document_ids_must_be_unique(cls, value: List[UUID]) -> List[UUID]:
+        if len(value) != len(set(value)):
+            raise ValueError("document_ids must be unique")
+        return value
 
 
 class MultiSourceChunk(BaseModel):
@@ -201,11 +236,22 @@ class BenchmarkMetric(BaseModel):
 
 class BenchmarkSummary(BaseModel):
     timestamp: str
+    mode: str
+    methodology_version: str = "legacy-v1"
+    results_validated: bool = False
     evaluated_models: dict
-    total_cases: int
+    parameters: dict
+    stats: dict
+    total_cases: int = 0
     metrics: List[BenchmarkMetric]
     category_breakdown: Optional[dict] = None
     details: List[dict]
+
+    @model_validator(mode="after")
+    def derive_total_cases(self):
+        if not self.total_cases:
+            self.total_cases = len(self.details)
+        return self
 
 
 # ─── Query history ───────────────────────────────────────────────────────────

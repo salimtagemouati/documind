@@ -1,0 +1,12 @@
+{
+  "model": "gemini/gemini-3.5-flash",
+  "database": "disposable PostgreSQL/pgvector",
+  "fixtures": "synthetic only",
+  "checks": [],
+  "status": "failed",
+  "error_type": "AssertionError",
+  "error": "Processing: failed (Document processing failed. Check the file and server AI configuration, then upload again.)",
+  "pipeline_diagnostics": [
+    "2026-10-21T03:29:31.220797Z [error    ] pipeline_failed                [app.api.routes.documents] document_id=067d9d05-2f12-4328-89c0-896f564db143 error_type=RateLimitError provider_status_code=429 stage=analysis"
+  ]
+}

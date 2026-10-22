@@ -8,7 +8,7 @@ html { scroll-behavior: smooth; }
   min-height: 100vh;
   background: #08090d;
   color: #e2e4ea;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: inherit;
   overflow-x: hidden;
 }
 
@@ -197,20 +197,6 @@ html { scroll-behavior: smooth; }
   animation-delay: -8s;
 }
 
-.hero-grid {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 60px 60px;
-  mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
-  -webkit-mask-image: radial-gradient(ellipse at center, black 20%, transparent 70%);
-}
-
 .hero-content {
   position: relative;
   z-index: 2;
@@ -255,10 +241,7 @@ html { scroll-behavior: smooth; }
 }
 
 .hero-title-gradient {
-  background: linear-gradient(135deg, #a5b4fc 0%, #818cf8 30%, #c084fc 70%, #e879f9 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #a5b4fc;
 }
 
 .hero-subtitle {
@@ -292,7 +275,7 @@ html { scroll-behavior: smooth; }
   border: none;
   cursor: pointer;
   transition: all 0.25s ease;
-  font-family: 'Inter', sans-serif;
+  font-family: inherit;
 }
 
 .btn-primary {
@@ -304,6 +287,13 @@ html { scroll-behavior: smooth; }
 .btn-primary:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 32px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(99, 102, 241, 0.4);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-secondary {
@@ -572,12 +562,9 @@ html { scroll-behavior: smooth; }
 }
 
 .stat-value {
-  font-size: 2.2rem;
+  font-size: 1.15rem;
   font-weight: 800;
-  background: linear-gradient(135deg, #a5b4fc, #818cf8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #818cf8;
   margin-bottom: 6px;
 }
 
@@ -585,6 +572,7 @@ html { scroll-behavior: smooth; }
   font-size: 0.85rem;
   color: #6b7280;
   font-weight: 500;
+  line-height: 1.5;
 }
 
 /* ─── PRICING ─── */
@@ -769,6 +757,10 @@ html { scroll-behavior: smooth; }
 
 /* ─── RESPONSIVE ─── */
 @media (max-width: 900px) {
+  .nav-links-desktop {
+    display: none;
+  }
+
   .features-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -801,10 +793,6 @@ html { scroll-behavior: smooth; }
 @media (max-width: 600px) {
   .landing-nav {
     padding: 0 16px;
-  }
-
-  .nav-links-desktop {
-    display: none;
   }
 
   .hero {

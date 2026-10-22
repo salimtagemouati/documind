@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import toast from 'react-hot-toast'
+import { showApiError } from '../services/toasts'
 
 type Mode = 'login' | 'register'
 
@@ -10,7 +11,7 @@ export default function AuthPage({ mode }: { mode: Mode }) {
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login, register, loginAsDemo } = useAuthStore()
+  const { login, register } = useAuthStore()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -25,9 +26,8 @@ export default function AuthPage({ mode }: { mode: Mode }) {
         toast.success('Account created!')
       }
       navigate('/dashboard')
-    } catch (err: any) {
-      const msg = err?.response?.data?.detail || 'Something went wrong'
-      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg))
+    } catch (error: unknown) {
+      showApiError(error, 'Something went wrong', 'auth-error')
     } finally {
       setLoading(false)
     }
@@ -37,7 +37,7 @@ export default function AuthPage({ mode }: { mode: Mode }) {
     <div style={{
       minHeight: '100vh', background: '#0f1117',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontFamily: "'Inter', sans-serif", padding: '24px'
+      fontFamily: 'inherit', padding: '24px'
     }}>
       <div style={{ width: '100%', maxWidth: '400px' }}>
         {/* Logo */}
@@ -105,18 +105,7 @@ export default function AuthPage({ mode }: { mode: Mode }) {
             <button
               type="button"
               disabled={loading}
-              onClick={async () => {
-                setLoading(true)
-                try {
-                  await loginAsDemo()
-                  toast.success('Welcome to DocuMind Public Demo!')
-                  navigate('/dashboard')
-                } catch {
-                  toast.error('Could not connect to demo session')
-                } finally {
-                  setLoading(false)
-                }
-              }}
+              onClick={() => navigate('/demo')}
               style={{
                 width: '100%',
                 padding: '11px',
@@ -126,14 +115,15 @@ export default function AuthPage({ mode }: { mode: Mode }) {
                 color: '#a5b4fc',
                 fontSize: '0.85rem',
                 fontWeight: 600,
-                cursor: 'pointer',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.65 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px'
               }}
             >
-              <span>🚀</span> Explore as Guest (Live Demo)
+              Explore as Guest (Live Demo)
             </button>
           </form>
 

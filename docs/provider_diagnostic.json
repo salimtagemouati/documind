@@ -1,0 +1,24 @@
+{
+  "http_status": 429,
+  "model": "gemini-3.5-flash",
+  "provider_status": "RESOURCE_EXHAUSTED",
+  "quota_details": [
+    {},
+    {
+      "violations": [
+        {
+          "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+          "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+          "quotaDimensions": {
+            "location": "global",
+            "model": "gemini-3.6-flash"
+          },
+          "quotaValue": "20"
+        }
+      ]
+    },
+    {
+      "retryDelay": "29350s"
+    }
+  ]
+}

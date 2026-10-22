@@ -1,0 +1,3 @@
+2026-10-21 03:34:06 [info     ] chunks_retrieved_pgvector      doc_count=1 query_length=8 retrieved=1
+2026-10-21 03:34:06 [info     ] chunks_retrieved_pgvector      doc_count=1 query_length=8 retrieved=0
+PASS: real PostgreSQL, SQL bootstrap + migrations, browser-role revocations, RLS, HNSW/GIN, cosine search, FTS, RRF, owner isolation

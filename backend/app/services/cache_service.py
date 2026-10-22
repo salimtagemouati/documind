@@ -12,9 +12,11 @@ Cache invalidation strategy:
 
 For local development without Redis: set REDIS_URL="" to use an in-memory dict fallback.
 """
+import copy
 import hashlib
 import json
 import re
+import time
 from typing import Any, Optional
 
 from app.core.config import get_settings
@@ -32,6 +34,27 @@ except ImportError:
     _use_redis = False
 
 _memory_cache: dict = {}  # Fallback — process-local, not shared across workers
+
+
+def _memory_get(key: str):
+    entry = _memory_cache.get(key)
+    if entry is None:
+        return None
+    expires, data = entry
+    if expires <= time.monotonic():
+        _memory_cache.pop(key, None)
+        return None
+    return copy.deepcopy(data)
+
+
+def _memory_set(key: str, data: dict):
+    now = time.monotonic()
+    for old_key in list(_memory_cache):
+        if _memory_cache[old_key][0] <= now:
+            del _memory_cache[old_key]
+    if len(_memory_cache) >= 256:
+        _memory_cache.pop(next(iter(_memory_cache)))
+    _memory_cache[key] = (now + settings.CACHE_TTL_SECONDS, copy.deepcopy(data))
 
 
 async def get_redis() -> Optional[Any]:
@@ -73,8 +96,8 @@ async def get_cached_answer(document_id: str, question: str) -> Optional[dict]:
                 logger.debug("cache_hit", key=key)
                 return json.loads(val)
     except Exception as e:
-        logger.warning("redis_cache_get_failed", error=str(e))
-    val = _memory_cache.get(key)
+        logger.warning("redis_cache_get_failed", error_type=type(e).__name__)
+    val = _memory_get(key)
     if val:
         return val
     return None
@@ -89,8 +112,8 @@ async def set_cached_answer(document_id: str, question: str, data: dict) -> None
             logger.debug("cache_set", key=key, ttl=settings.CACHE_TTL_SECONDS)
             return
     except Exception as e:
-        logger.warning("redis_cache_set_failed", error=str(e))
-    _memory_cache[key] = data
+        logger.warning("redis_cache_set_failed", error_type=type(e).__name__)
+    _memory_set(key, data)
 
 
 async def get_cached_analysis(document_id: str, analysis_type: str) -> Optional[dict]:
@@ -102,8 +125,8 @@ async def get_cached_analysis(document_id: str, analysis_type: str) -> Optional[
             val = await r.get(key)
             return json.loads(val) if val else None
     except Exception as e:
-        logger.warning("redis_cache_get_failed", error=str(e))
-    return _memory_cache.get(key)
+        logger.warning("redis_cache_get_failed", error_type=type(e).__name__)
+    return _memory_get(key)
 
 
 async def set_cached_analysis(document_id: str, analysis_type: str, data: dict) -> None:
@@ -114,8 +137,8 @@ async def set_cached_analysis(document_id: str, analysis_type: str, data: dict) 
             await r.setex(key, settings.CACHE_TTL_SECONDS, json.dumps(data))
             return
     except Exception as e:
-        logger.warning("redis_cache_set_failed", error=str(e))
-    _memory_cache[key] = data
+        logger.warning("redis_cache_set_failed", error_type=type(e).__name__)
+    _memory_set(key, data)
 
 
 async def invalidate_document_cache(document_id: str) -> None:
@@ -129,7 +152,7 @@ async def invalidate_document_cache(document_id: str) -> None:
                 await r.delete(*keys)
                 logger.info("cache_invalidated", document_id=document_id, keys=len(keys))
     except Exception as e:
-        logger.warning("redis_cache_invalidate_failed", error=str(e))
+        logger.warning("redis_cache_invalidate_failed", error_type=type(e).__name__)
 
     to_delete = [k for k in _memory_cache if document_id in k]
     for k in to_delete:

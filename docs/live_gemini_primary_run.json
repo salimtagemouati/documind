@@ -1,0 +1,38 @@
+{
+  "status": "passed",
+  "recorded_from": "First live run stdout on 2026-10-20; later runs overwrote the original latest-result file",
+  "model": "gemini/gemini-3.5-flash",
+  "database": "disposable PostgreSQL/pgvector",
+  "fixtures": "synthetic only",
+  "ingestion_ms": 51645,
+  "answer": {
+    "question": "How long does the warranty last?",
+    "answer": "According to Source 1 (Page 2), the warranty lasts 24 months.",
+    "sources": [
+      {
+        "content": "Warranty lasts 24 months. Support response time is 4 business hours.",
+        "chunk_index": 1,
+        "page_number": 2,
+        "similarity_score": 0.7724
+      },
+      {
+        "content": "Contract between Northwind and Acme.",
+        "chunk_index": 0,
+        "page_number": 1,
+        "similarity_score": 0.5312
+      }
+    ],
+    "tokens_used": 223,
+    "latency_ms": 14787,
+    "from_cache": false,
+    "reranked": false
+  },
+  "followup_answer": "According to Source 1 (Page 2), the support response time is 4 business hours.",
+  "unsupported_question": "This information is not found in the document.",
+  "checks": [
+    "PDF upload, extraction, real Gemini embeddings, pgvector indexing, AI analysis",
+    "Real retrieval, generation, expected answer and page 2 citation",
+    "Bounded follow-up conversation",
+    "Deletion removes original, metadata and saved source-bearing history"
+  ]
+}

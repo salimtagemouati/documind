@@ -2,8 +2,11 @@
 Tests for document processing service.
 Run: pytest tests/ -v
 """
-import pytest
-from app.services.document_processor import chunk_text, count_tokens, extract_text_from_txt
+from app.services.document_processor import (
+    chunk_text,
+    count_tokens,
+    extract_text_from_txt,
+)
 
 
 def test_chunk_text_basic():

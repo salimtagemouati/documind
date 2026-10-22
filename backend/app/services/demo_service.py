@@ -4,6 +4,7 @@ Demo Service — Instant Zero-Friction Public Demo Access
 Provides pre-seeded, high-quality benchmark documents for portfolio visitors,
 recruiters, and interviewers to experience DocuMind without registration friction.
 """
+import secrets
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -179,7 +180,7 @@ async def ensure_demo_user(db: AsyncSession) -> User:
     if not user:
         user = User(
             email=DEMO_EMAIL,
-            hashed_password=hash_password("DemoPassword123!"),
+            hashed_password=hash_password(secrets.token_urlsafe(48)),
             full_name="DocuMind Demo Guest",
             role=UserRole.premium,
             subscription_tier="pro",

@@ -1,11 +1,16 @@
 """
 Unit tests for LLM rate limiter, concurrency controller, and retry mechanism.
 """
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
+
 import litellm
 import pytest
 
-from app.services.llm_limiter import call_with_limits, extract_retry_delay, is_retryable_llm_error
+from app.services.llm_limiter import (
+    call_with_limits,
+    extract_retry_delay,
+    is_retryable_llm_error,
+)
 
 
 @pytest.mark.asyncio
@@ -45,3 +50,17 @@ def test_extract_retry_delay():
     assert extract_retry_delay(RuntimeError("Quota exceeded. Please retry in 46.14s.")) == 46.14
     assert extract_retry_delay(RuntimeError('{"retryDelay": "30s"}')) == 30.0
     assert extract_retry_delay(ValueError("generic error")) is None
+
+
+@pytest.mark.asyncio
+async def test_local_async_deadline_retries_but_remains_bounded():
+    from unittest.mock import AsyncMock
+    request = AsyncMock(side_effect=[TimeoutError(), 'recovered'])
+    with patch('app.services.llm_limiter.SmartWait.__call__', return_value=0):
+        assert await call_with_limits(request) == 'recovered'
+    assert request.call_count == 2
+    request = AsyncMock(side_effect=TimeoutError())
+    with patch('app.services.llm_limiter.SmartWait.__call__', return_value=0):
+        with pytest.raises(TimeoutError):
+            await call_with_limits(request)
+    assert request.call_count == 3

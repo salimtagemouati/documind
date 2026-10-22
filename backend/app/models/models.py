@@ -20,7 +20,23 @@ from sqlalchemy import (
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, UUID
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+
+@compiles(UUID, "sqlite")
+def compile_uuid_for_sqlite(element, compiler, **kwargs):
+    return "VARCHAR(36)"
+
+
+@compiles(ARRAY, "sqlite")
+def compile_array_for_sqlite(element, compiler, **kwargs):
+    return "JSON"
+
+
+@compiles(Vector, "sqlite")
+def compile_vector_for_sqlite(element, compiler, **kwargs):
+    return "TEXT"
 
 
 class Base(DeclarativeBase):
@@ -53,7 +69,7 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255))
-    role = Column(SAEnum(UserRole), default=UserRole.user, nullable=False)
+    role = Column(SAEnum(UserRole, name="user_role"), default=UserRole.user, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
 
@@ -94,7 +110,7 @@ class Document(Base):
     storage_url = Column(String(2000))                      # Public URL if applicable
 
     # Processing status
-    status = Column(SAEnum(DocumentStatus), default=DocumentStatus.pending, nullable=False)
+    status = Column(SAEnum(DocumentStatus, name="doc_status"), default=DocumentStatus.pending, nullable=False)
     error_message = Column(Text)
 
     # Extracted content
@@ -106,7 +122,7 @@ class Document(Base):
     # AI analysis results (cached)
     summary = Column(Text)
     entities = Column(JSON)                                  # {persons:[], orgs:[], dates:[], ...}
-    keywords = Column(ARRAY(String))
+    keywords = Column(ARRAY(String).with_variant(JSON, "sqlite"))
     sentiment = Column(JSON)                                 # {label, score, confidence}
     language = Column(String(10))
 

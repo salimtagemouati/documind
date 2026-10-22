@@ -57,7 +57,10 @@ def extract_retry_delay(exc: BaseException) -> float | None:
 
 def is_retryable_llm_error(exc: BaseException) -> bool:
     """Check if exception is a transient or rate-limit error that should be retried."""
-    if isinstance(exc, (litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.Timeout)):
+    delay = extract_retry_delay(exc)
+    if (delay is not None and delay > 60) or "perday" in str(exc).lower():
+        return False
+    if isinstance(exc, (TimeoutError, litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.Timeout)):
         return True
     msg = str(exc).lower()
     if any(term in msg for term in ["429", "resource_exhausted", "rate limit", "quota", "overloaded", "unavailable"]):
@@ -68,7 +71,7 @@ def is_retryable_llm_error(exc: BaseException) -> bool:
 class SmartWait:
     """Combines explicit API-requested retryDelay with exponential backoff and jitter."""
     def __init__(self):
-        self.fallback = wait_random_exponential(min=2, max=60)
+        self.fallback = wait_random_exponential(min=2, max=10)
 
     def __call__(self, retry_state):
         exc = retry_state.outcome.exception() if retry_state.outcome else None
@@ -76,7 +79,7 @@ class SmartWait:
             delay = extract_retry_delay(exc)
             if delay is not None:
                 # Add 2 seconds buffer over Google's required retry window
-                return delay + 2.0
+                return min(delay + 2.0, 60.0)
         return self.fallback(retry_state)
 
 
@@ -112,14 +115,14 @@ async def call_with_limits(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -
     async with sem:
         async for attempt in AsyncRetrying(
             retry=retry_if_exception(is_retryable_llm_error),
-            stop=stop_after_attempt(10),
+            stop=stop_after_attempt(3),
             wait=smart_wait,
             reraise=True,
         ):
             with attempt:
                 try:
                     await _enforce_pacing()
-                    return await coro_factory()
+                    return await asyncio.wait_for(coro_factory(), timeout=20)
                 except Exception as e:
                     if is_retryable_llm_error(e):
                         delay = extract_retry_delay(e)
@@ -127,6 +130,6 @@ async def call_with_limits(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -
                             "llm_rate_limit_retry",
                             attempt=attempt.retry_state.attempt_number,
                             retry_delay_detected=delay,
-                            error=str(e)[:150],
+                            error_type=type(e).__name__,
                         )
                     raise

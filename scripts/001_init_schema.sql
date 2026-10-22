@@ -167,3 +167,18 @@ CREATE POLICY "qh_insert_own" ON query_history FOR INSERT WITH CHECK (user_id = 
 -- Replace password hash with: python -c "from passlib.context import CryptContext; print(CryptContext(['bcrypt']).hash('AdminPass123'))"
 -- INSERT INTO users (email, hashed_password, full_name, role, is_verified)
 -- VALUES ('admin@documind.app', '<bcrypt_hash>', 'DocuMind Admin', 'admin', TRUE);
+
+-- The app uses its own JWTs and a trusted backend database connection.
+-- Browser roles must not read password hashes or mutate application roles via
+-- the Supabase Data API. API ownership checks remain authoritative server-side.
+ALTER TABLE daily_stats ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE ALL ON TABLE users, documents, document_chunks, query_history, daily_stats FROM anon;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE ALL ON TABLE users, documents, document_chunks, query_history, daily_stats FROM authenticated;
+    END IF;
+END
+$$;

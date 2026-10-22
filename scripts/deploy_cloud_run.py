@@ -1,0 +1,348 @@
+#!/usr/bin/env python3
+"""Deploy DocuMind to Cloud Run without putting secret values in argv or Git."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from urllib.parse import urlparse
+
+from dotenv import dotenv_values
+
+ROOT = Path(__file__).resolve().parents[1]
+BACKEND_DIR = ROOT / "backend"
+ENV_FILE = BACKEND_DIR / ".env"
+
+REQUIRED_SECRETS = {
+    "SECRET_KEY": "documind-secret-key",
+    "SUPABASE_ANON_KEY": "documind-supabase-anon-key",
+    "SUPABASE_SERVICE_KEY": "documind-supabase-service-key",
+    "DATABASE_URL": "documind-database-url",
+    "GOOGLE_API_KEY": "documind-google-api-key",
+}
+
+OPTIONAL_SECRETS = {
+    "OPENAI_API_KEY": "documind-openai-api-key",
+    "ANTHROPIC_API_KEY": "documind-anthropic-api-key",
+    "GROQ_API_KEY": "documind-groq-api-key",
+    "REDIS_URL": "documind-redis-url",
+    "STRIPE_SECRET_KEY": "documind-stripe-secret-key",
+    "STRIPE_WEBHOOK_SECRET": "documind-stripe-webhook-secret",
+    "SENTRY_DSN": "documind-sentry-dsn",
+}
+
+NON_SECRET_DEFAULTS = {
+    "ENVIRONMENT": "production",
+    "STORAGE_BACKEND": "supabase",
+    "DOCUMENT_PROCESSING_TIMEOUT_SECONDS": "120",
+    "DEBUG": "false",
+    "SUPABASE_BUCKET": "documents",
+    "LLM_PROVIDER": "gemini",
+    "LLM_MODEL": "gemini/gemini-3.5-flash-lite",
+    "EMBEDDING_MODEL": "gemini/gemini-embedding-001",
+    "EMBEDDING_DIM": "768",
+    "LLM_MAX_CONCURRENCY": "3",
+    "RAG_TOP_K": "6",
+    "RAG_INITIAL_TOP_K": "15",
+    "RAG_SIMILARITY_THRESHOLD": "0.50",
+    "ENABLE_RERANKING": "false",
+    "ANALYSIS_MODE": "combined",
+    "ENABLE_HYBRID_SEARCH": "true",
+}
+
+PASSTHROUGH_NON_SECRETS = {
+    "APP_NAME",
+    "ACCESS_TOKEN_EXPIRE_MINUTES",
+    "REFRESH_TOKEN_EXPIRE_DAYS",
+    "ALLOWED_ORIGINS",
+    "SUPABASE_URL",
+    "MAX_FILE_SIZE_MB",
+    "ALLOWED_EXTENSIONS",
+    "OLLAMA_API_BASE",
+    "CHUNK_SIZE",
+    "CHUNK_OVERLAP",
+    "MAX_CHUNKS_PER_DOC",
+    "RATE_LIMIT_REQUESTS",
+    "RATE_LIMIT_WINDOW",
+    "AI_RATE_LIMIT_REQUESTS",
+    "AI_RATE_LIMIT_WINDOW",
+    "CACHE_TTL_SECONDS",
+    "STRIPE_PUBLISHABLE_KEY",
+    "STRIPE_PRICE_ID_PRO",
+    "STRIPE_FREE_DOC_LIMIT",
+    "STRIPE_FREE_QUERY_LIMIT",
+    "FRONTEND_URL",
+}
+
+REQUIRED_CONFIGURATION = {
+    *REQUIRED_SECRETS,
+    "SUPABASE_URL",
+    "REDIS_URL",
+    "ALLOWED_ORIGINS",
+    "FRONTEND_URL",
+}
+
+
+def _is_placeholder(value: str) -> bool:
+    normalized = value.strip().lower()
+    return (
+        not normalized
+        or "replace_me" in normalized
+        or "replace-me" in normalized
+        or "your-project" in normalized
+        or "your_" in normalized
+        or "placeholder" in normalized
+        or ".example." in normalized
+        or normalized.endswith(".invalid")
+        or ".invalid/" in normalized
+    )
+
+
+def _is_local_url(value: str) -> bool:
+    hostname = (urlparse(value).hostname or "").lower()
+    return hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def invalid_configuration_keys(values: dict[str, str]) -> list[str]:
+    """Return names of missing, template, or local-only production settings."""
+    invalid = {
+        key
+        for key in REQUIRED_CONFIGURATION
+        if _is_placeholder(values.get(key, ""))
+    }
+
+    database_url = values.get("DATABASE_URL", "")
+    if not database_url.lower().startswith("postgresql+asyncpg://"):
+        invalid.add("DATABASE_URL")
+    else:
+        database_host = (urlparse(database_url).hostname or "").lower()
+        if (
+            not database_host
+            or database_host == "host"
+            or "example" in database_host
+            or "replace_me" in database_host
+            or "replace-me" in database_host
+            or "your-project" in database_host
+            or database_host.endswith(".invalid")
+        ):
+            invalid.add("DATABASE_URL")
+
+    frontend_url = values.get("FRONTEND_URL", "")
+    if frontend_url and (_is_local_url(frontend_url) or urlparse(frontend_url).scheme != "https"):
+        invalid.add("FRONTEND_URL")
+
+    raw_origins = values.get("ALLOWED_ORIGINS", "")
+    try:
+        origins = json.loads(raw_origins) if raw_origins.startswith("[") else raw_origins.split(",")
+        if not isinstance(origins, list) or not origins or any(
+            not isinstance(origin, str) or _is_local_url(origin.strip())
+            or urlparse(origin.strip()).scheme != "https" or not urlparse(origin.strip()).hostname
+            or urlparse(origin.strip()).path not in ("", "/") or urlparse(origin.strip()).query
+            for origin in origins
+        ):
+            invalid.add("ALLOWED_ORIGINS")
+    except (ValueError, TypeError):
+        invalid.add("ALLOWED_ORIGINS")
+    if values.get("STORAGE_BACKEND", "supabase") != "supabase":
+        invalid.add("STORAGE_BACKEND")
+    if len(values.get("SECRET_KEY", "")) < 32:
+        invalid.add("SECRET_KEY")
+
+    redis_url = values.get("REDIS_URL", "")
+    if redis_url and (_is_placeholder(redis_url) or _is_local_url(redis_url) or urlparse(redis_url).scheme != "rediss"):
+        invalid.add("REDIS_URL")
+
+    return sorted(invalid)
+
+
+def build_environment(values: dict[str, str]) -> dict[str, str]:
+    """Carry supported configuration through; never silently replace tested models."""
+    allowed = PASSTHROUGH_NON_SECRETS | NON_SECRET_DEFAULTS.keys()
+    return {
+        **NON_SECRET_DEFAULTS,
+        **{key: values[key] for key in allowed if values.get(key)},
+        "ENVIRONMENT": "production", "DEBUG": "false", "STORAGE_BACKEND": "supabase",
+    }
+
+
+def run(command: list[str], *, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=ROOT,
+        input=stdin,
+        text=True,
+        check=True,
+    )
+
+
+def configured_project() -> str:
+    result = subprocess.run(
+        ["gcloud", "config", "get-value", "project"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    project = result.stdout.strip()
+    if not project or project == "(unset)":
+        raise RuntimeError("No Google Cloud project is configured")
+    return project
+
+
+def ensure_secret(project: str, secret_name: str, secret_value: str) -> str:
+    describe = subprocess.run(
+        ["gcloud", "secrets", "describe", secret_name, "--project", project],
+        cwd=ROOT,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    if describe.returncode != 0:
+        run(
+            [
+                "gcloud",
+                "secrets",
+                "create",
+                secret_name,
+                "--replication-policy=automatic",
+                "--project",
+                project,
+            ]
+        )
+    version_result = subprocess.run(
+        [
+            "gcloud",
+            "secrets",
+            "versions",
+            "add",
+            secret_name,
+            "--data-file=-",
+            "--format=value(name)",
+            "--project",
+            project,
+        ],
+        cwd=ROOT,
+        input=secret_value,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return version_result.stdout.strip().rsplit("/", 1)[-1]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project", default=None)
+    parser.add_argument("--env-file", type=Path, default=ENV_FILE, help="Private environment file; defaults to backend/.env")
+    parser.add_argument("--region", default=os.environ.get("CLOUD_RUN_REGION", "europe-west1"))
+    parser.add_argument("--service", default="documind-api")
+    parser.add_argument("--service-account", required=True)
+    parser.add_argument("--apply", action="store_true", help="Create secrets and deploy")
+    args = parser.parse_args()
+
+    env_path = args.env_file.resolve()
+    if not env_path.exists():
+        print("backend/.env is required and must remain untracked", file=sys.stderr)
+        return 2
+
+    values = {key: value for key, value in dotenv_values(env_path).items() if value}
+    invalid = invalid_configuration_keys(values)
+    if invalid:
+        print(
+            "Missing or non-production backend/.env variables: " + ", ".join(invalid),
+            file=sys.stderr,
+        )
+        return 2
+
+    project = args.project or configured_project()
+    secret_values = {
+        env_name: (secret_name, values[env_name])
+        for env_name, secret_name in {**REQUIRED_SECRETS, **OPTIONAL_SECRETS}.items()
+        if values.get(env_name)
+    }
+    environment = build_environment(values)
+
+    print(
+        f"Cloud Run plan: project={project}, region={args.region}, service={args.service}, "
+        f"secrets={len(secret_values)}, min_instances=1"
+    )
+    if not args.apply:
+        print("Validation complete. Re-run with --apply to create a revision.")
+        return 0
+
+    run(
+        [
+            "gcloud",
+            "services",
+            "enable",
+            "run.googleapis.com",
+            "cloudbuild.googleapis.com",
+            "artifactregistry.googleapis.com",
+            "secretmanager.googleapis.com",
+            "--project",
+            project,
+        ]
+    )
+
+    secret_versions = {
+        env_name: (secret_name, ensure_secret(project, secret_name, secret_value))
+        for env_name, (secret_name, secret_value) in secret_values.items()
+    }
+
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as env_file:
+        env_path = Path(env_file.name)
+        for key, value in sorted(environment.items()):
+            escaped = value.replace("'", "''")
+            env_file.write(f"{key}: '{escaped}'\n")
+
+    secret_bindings = ",".join(
+        f"{env_name}={secret_name}:{version}"
+        for env_name, (secret_name, version) in sorted(secret_versions.items())
+    )
+    try:
+        run(
+            [
+                "gcloud",
+                "run",
+                "deploy",
+                args.service,
+                "--source",
+                str(BACKEND_DIR),
+                "--project",
+                project,
+                "--region",
+                args.region,
+                "--service-account",
+                args.service_account,
+                "--allow-unauthenticated",
+                "--execution-environment=gen2",
+                "--port=8080",
+                "--cpu=1",
+                "--memory=1Gi",
+                "--concurrency=40",
+                "--min-instances=1",
+                "--max-instances=10",
+                "--timeout=3600",
+                "--cpu-boost",
+                "--no-cpu-throttling",
+                "--session-affinity",
+                "--env-vars-file",
+                str(env_path),
+                "--update-secrets",
+                secret_bindings,
+                "--quiet",
+            ]
+        )
+    finally:
+        env_path.unlink(missing_ok=True)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

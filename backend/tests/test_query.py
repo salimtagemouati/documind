@@ -1,11 +1,31 @@
 from uuid import uuid4
-from httpx import AsyncClient
+
 import pytest
 import pytest_asyncio
+from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.models.models import Document, DocumentStatus, User
-from app.schemas.schemas import MultiQueryResponse, MultiSourceChunk, QueryResponse, SourceChunk
+from app.schemas.schemas import (
+    MultiQueryResponse,
+    MultiSourceChunk,
+    QueryResponse,
+    SourceChunk,
+)
+
+
+@pytest.mark.asyncio
+async def test_multi_query_rejects_duplicate_document_ids(auth_client: AsyncClient):
+    document_id = str(uuid4())
+    response = await auth_client.post(
+        "/api/v1/query/multi",
+        json={
+            "document_ids": [document_id, document_id],
+            "question": "Compare these documents",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 @pytest_asyncio.fixture
@@ -110,6 +130,41 @@ async def test_query_document_not_ready(auth_client: AsyncClient, db_session):
     response = await auth_client.post("/api/v1/query/", json=payload)
     assert response.status_code == 409
     assert "Please wait for processing" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_query_rate_limit_error_returns_clean_response(
+    auth_client: AsyncClient, db_session, monkeypatch
+):
+    import litellm
+
+    import app.api.routes.query as query_route
+
+    user_result = await db_session.execute(select(User).where(User.email == "query@example.com"))
+    user = user_result.scalar_one()
+    doc = Document(
+        id=uuid4(), user_id=user.id, filename="ready.pdf", original_filename="ready.pdf",
+        file_type="pdf", file_size_bytes=100, storage_path="ready", status=DocumentStatus.ready,
+    )
+    db_session.add(doc)
+    await db_session.commit()
+
+    async def fail_with_rate_limit(**kwargs):
+        raise litellm.RateLimitError(
+            message="provider rejected request with api_key=do-not-leak",
+            model="test-model",
+            llm_provider="test-provider",
+        )
+
+    monkeypatch.setattr(query_route, "answer_question", fail_with_rate_limit)
+    response = await auth_client.post(
+        "/api/v1/query/",
+        json={"document_id": str(doc.id), "question": "What is the answer?"},
+    )
+
+    assert response.status_code == 429
+    assert response.json() == {"detail": "AI service rate limit reached. Please try again later."}
+    assert "do-not-leak" not in response.text
 
 
 @pytest.mark.asyncio
@@ -263,4 +318,3 @@ async def test_multi_query_rerank_disabled(auth_client: AsyncClient, db_session,
     response = await auth_client.post("/api/v1/query/multi", json=payload)
     assert response.status_code == 200
     assert rerank_flag_received is False
-

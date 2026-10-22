@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { websocketBase } from '../services/websocketUrl'
 
 export interface ProgressEvent {
   stage: 'extracting' | 'chunking' | 'embedding' | 'analyzing' | 'complete' | 'error' | 'waiting'
@@ -38,6 +39,7 @@ export function useDocumentProgress({
   const wsRef = useRef<WebSocket | null>(null)
   const retryCountRef = useRef(0)
   const retryTimerRef = useRef<number | null>(null)
+  const connectRef = useRef<() => void>(() => undefined)
   const maxRetries = 3
 
   const connect = useCallback(() => {
@@ -47,16 +49,7 @@ export function useDocumentProgress({
     if (!token) return
 
     // Build WebSocket URL
-    const apiUrl = import.meta.env.VITE_API_URL || ''
-    let wsBase: string
-
-    if (apiUrl) {
-      // Production: VITE_API_URL is like https://api.example.com/api/v1
-      wsBase = apiUrl.replace(/^http/, 'ws')
-    } else {
-      // Local dev: use the current host (Vite proxy doesn't support WS, connect directly)
-      wsBase = `ws://localhost:8000/api/v1`
-    }
+    const wsBase = websocketBase(import.meta.env.VITE_API_URL || '', window.location.origin)
 
     const wsUrl = `${wsBase}/ws/documents/${documentId}?token=${token}`
 
@@ -95,7 +88,7 @@ export function useDocumentProgress({
         if (retryCountRef.current < maxRetries) {
           const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 5000)
           retryCountRef.current += 1
-          retryTimerRef.current = window.setTimeout(connect, delay)
+          retryTimerRef.current = window.setTimeout(() => connectRef.current(), delay)
         }
       }
 
@@ -106,6 +99,10 @@ export function useDocumentProgress({
       // WebSocket constructor can throw in some environments
     }
   }, [documentId, enabled, onComplete, onError])
+
+  useEffect(() => {
+    connectRef.current = connect
+  }, [connect])
 
   useEffect(() => {
     connect()
@@ -153,13 +150,7 @@ export function useMultiDocumentProgress(
     if (!token) return
 
     // Build WebSocket base URL
-    const apiUrl = import.meta.env.VITE_API_URL || ''
-    let wsBase: string
-    if (apiUrl) {
-      wsBase = apiUrl.replace(/^http/, 'ws')
-    } else {
-      wsBase = `ws://localhost:8000/api/v1`
-    }
+    const wsBase = websocketBase(import.meta.env.VITE_API_URL || '', window.location.origin)
 
     for (const doc of processingDocs) {
       // Skip if already connected

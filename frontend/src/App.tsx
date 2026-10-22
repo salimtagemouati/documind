@@ -1,18 +1,15 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import { useAuthStore } from './store/authStore'
+import { queryClient } from './services/queryClient'
 import LandingPage from './pages/LandingPage'
 import AuthPage from './pages/AuthPage'
 import Dashboard from './pages/Dashboard'
 import BillingPage from './pages/BillingPage'
 import DemoPage from './pages/DemoPage'
 
-const qc = new QueryClient({
-  defaultOptions: {
-    queries: { retry: 1, staleTime: 30_000 },
-  },
-})
+
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore()
@@ -26,7 +23,7 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage />} />
@@ -41,6 +38,7 @@ export default function App() {
       <Toaster
         position="bottom-right"
         toastOptions={{
+          duration: 5000,
           style: { background: '#1a1d27', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', fontSize: '0.85rem' },
           success: { iconTheme: { primary: '#10b981', secondary: '#fff' } },
           error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },

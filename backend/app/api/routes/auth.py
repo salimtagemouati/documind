@@ -30,17 +30,19 @@ from app.schemas.schemas import (
     TokenResponse,
     UserPublic,
 )
+from app.services.demo_service import DEMO_EMAIL
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = get_logger(__name__)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """Create a new user account."""
     # Check uniqueness
     result = await db.execute(select(User).where(User.email == payload.email))
-    if result.scalar_one_or_none():
+    if payload.email.casefold() == DEMO_EMAIL or result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists",
@@ -66,13 +68,14 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate and receive JWT tokens."""
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
 
     # Constant-time comparison — don't short-circuit on "user not found"
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user or user.email.casefold() == DEMO_EMAIL or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -110,7 +113,11 @@ async def login_demo(request: Request, db: AsyncSession = Depends(get_db)):
         extra={"role": user.role.value, "is_demo": True},
         expires_delta=timedelta(hours=2),
     )
-    refresh_token = create_refresh_token(str(user.id))
+    refresh_token = create_refresh_token(
+        str(user.id),
+        extra={"role": user.role.value, "is_demo": True},
+        expires_delta=timedelta(hours=2),
+    )
     logger.info("demo_session_created", user_id=str(user.id))
     return TokenResponse(
         access_token=access_token,
@@ -132,10 +139,21 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    access_token = create_access_token(str(user.id), extra={"role": user.role.value})
-    new_refresh = create_refresh_token(str(user.id))
+    is_demo = user.email.casefold() == DEMO_EMAIL or bool(token_data.get("is_demo"))
+    token_lifetime = timedelta(hours=2) if is_demo else None
+    token_extra = {"role": user.role.value, **({"is_demo": True} if is_demo else {})}
+    access_token = create_access_token(
+        str(user.id), extra=token_extra, expires_delta=token_lifetime
+    )
+    new_refresh = create_refresh_token(
+        str(user.id), extra=token_extra, expires_delta=token_lifetime
+    )
 
-    return TokenResponse(access_token=access_token, refresh_token=new_refresh, expires_in=60 * 60)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh,
+        expires_in=60 * 60 * 2 if is_demo else 60 * 60,
+    )
 
 
 @router.get("/me", response_model=UserPublic)
@@ -149,4 +167,6 @@ async def get_me(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return UserPublic.model_validate(user)
+    profile = UserPublic.model_validate(user)
+    profile.is_demo = bool(current_user.get("is_demo"))
+    return profile

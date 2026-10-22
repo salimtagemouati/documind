@@ -1,0 +1,1 @@
+PASS: built non-root container starts and serves healthy readiness

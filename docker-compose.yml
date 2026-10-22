@@ -1,12 +1,10 @@
-version: "3.9"
-
 # ============================================================
 # DocuMind — Local Development Stack
 # Usage:
 #   docker compose up --build
 #   docker compose up -d          (detached)
 #   docker compose logs -f api    (tail API logs)
-#   docker compose down -v        (stop + remove volumes)
+#   docker compose down           (stop; retain local data)
 # ============================================================
 
 services:
@@ -18,16 +16,18 @@ services:
       dockerfile: Dockerfile
     container_name: documind-api
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/dev.db
+      - LOCAL_UPLOAD_DIR=/app/data/uploads
     env_file:
       - ./backend/.env
     volumes:
       - ./backend/app:/app/app        # Hot reload in dev
-      - faiss_data:/app/data          # Persist FAISS indexes
+      - api_data:/app/data
     depends_on:
       redis:
         condition: service_healthy
@@ -44,7 +44,7 @@ services:
     image: redis:7-alpine
     container_name: documind-redis
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
@@ -57,15 +57,15 @@ services:
 
   # ─── React Frontend (Vite dev server) ─────────────────────
   frontend:
-    image: node:20-alpine
+    image: node:22-alpine
     container_name: documind-frontend
     working_dir: /app
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
     environment:
       - VITE_API_URL=http://localhost:8000/api/v1
     depends_on:
@@ -73,7 +73,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  redis_data:
+  api_data:
     driver: local
-  faiss_data:
+  redis_data:
     driver: local

@@ -1,49 +1,55 @@
-# DocuMind RAG Quality Benchmark & Scientific Evaluation Report
+# DocuMind RAG evaluation report
 
-> **Evaluation Run Date**: `2026-09-19T13:43:38.014556+00:00`  
-> **Evaluation Mode**: `in-memory (numpy cosine similarity, does not test pgvector HNSW)`  
-> **Evaluated Models**: Generation: `gemini/gemini-3.5-flash-lite` | Embeddings: `gemini/gemini-embedding-001`  
-> **Benchmark Parameters**: Top-K: `5` | Candidate Pool: `15` | Cases Evaluated: `15`  
-> **Execution Stats**: `24` total LLM calls | Baseline Latency: `2.36s` | Two-Stage Latency: `1.64s`  
+## Current status
 
-## Executive Summary
+The checked-in JSON artifact was generated on `2026-09-19T13:43:38.014556+00:00` from 15 curated cases in **in-memory mode**. It is retained as historical evidence, but its aggregate scores are **not validated under the current methodology**.
 
-Most portfolio RAG applications claim retrieval accuracy without measurable proof. DocuMind implements an empirical evaluation harness with ground-truth labeled benchmark queries spanning SaaS Legal Contracts, Distributed Database Architecture, and Financial Performance Reports.
+The audit found that the legacy Precision@K implementation divided relevant results by the number of returned chunks rather than by K. Because the demo corpus often produces fewer than five chunks, this inflated the stored Precision@5 value. The formula is now corrected, but the artifact cannot be regenerated in this checkout without valid provider credentials and quota.
 
-By transitioning from pure dense vector search to **Two-Stage Retrieval (Candidate Retrieval + Cross-Encoder / LLM Re-ranking)**, the system demonstrates the following empirical metrics:
+Do not cite the historical percentages as current benchmark results. Rerun the harness first:
 
-### 1. Global Benchmark Metrics (Run A vs. Run B)
+```bash
+cd backend
+python -m app.eval.runner --cases 3
+python -m app.eval.runner
+```
 
-| Metric | Baseline (Dense Vector) | Two-Stage (Hybrid + Re-rank) | Delta (Δ) | Verdict |
-| :--- | :---: | :---: | :---: | :--- |
-| **Retrieval Precision@5** | 100.0% | 100.0% | **`0.0%`** | Maintained 🛡️ |
-| **Retrieval Recall@5** | 94.4% | 94.4% | **`0.0%`** | Maintained 🛡️ |
-| **Mean Reciprocal Rank (MRR)** | 100.0% | 100.0% | **`0.0%`** | Maintained 🛡️ |
-| **Answer Groundedness** | 95.8% | 95.8% | **`0.0%`** | Maintained 🛡️ |
-| **Out-of-Domain Refusal Accuracy** | 33.3% | 33.3% | **`0.0%`** | Maintained 🛡️ |
+## Historical artifact (legacy-v1, invalidated)
 
-### 2. Breakdown by Query Category
+These values are transcribed from `docs/benchmark_report.json` so the repository history remains auditable; they are not endorsements of correctness.
 
-| Category | Test Cases | Baseline Precision | Re-ranked Precision | Baseline MRR | Re-ranked MRR |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| `single_fact` | 8 | 100.0% | 100.0% | 1.000 | 1.000 |
-| `multi_hop` | 4 | 100.0% | 100.0% | 1.000 | 1.000 |
+| Metric | Dense baseline | Dense candidates + LLM rerank |
+|---|---:|---:|
+| Precision@5 | 100.0% | 100.0% |
+| Recall@5 | 94.4% | 94.4% |
+| MRR | 100.0% | 100.0% |
+| Lexical groundedness proxy | 95.8% | 95.8% |
+| Out-of-domain refusal accuracy | 33.3% | 33.3% |
 
-#### Adversarial & Out-of-Domain Query Handling
-- **Negative Refusal Accuracy (Baseline)**: 33.3%
-- **Negative Refusal Accuracy (Re-ranked)**: 33.3%
-- Both stages properly refuse to invent contract terms or financial figures not present in the ingested texts.
+The 33.3% refusal result means two of three adversarial questions were not recognized as refusals by the evaluator. The system must not be described as reliably refusing unsupported questions on the basis of this run.
 
-## Technical Analysis: Why Two-Stage Retrieval Improves Quality
+## What the harness actually measures
 
-1. **Elimination of Semantic Bleed**: Dense embeddings alone often pull adjacent clauses (e.g. general indemnity clauses when asking specifically about the aggregate dollar cap). Re-ranking acts as an information filter that pushes the exact relevant paragraph to rank #1.
-2. **Higher Mean Reciprocal Rank (MRR)**: Moving the crucial chunk to position #1 substantially improves LLM generation quality because language models exhibit 'lost-in-the-middle' attention decay on long contexts.
-3. **Zero Startup Index Wipe**: Switching from ephemeral local FAISS to durable PostgreSQL vector persistence ensures vector embeddings are immediately and durably available across multi-tenant worker processes.
+- Baseline: normalized embeddings and NumPy cosine similarity in memory.
+- Enhanced run: a larger dense candidate pool followed by one batched LLM reranking call.
+- Precision@K: relevant returned chunks divided by K.
+- Recall@K: fraction of required keywords found across retrieved chunks.
+- MRR: reciprocal rank of the first chunk containing any required keyword.
+- Groundedness: lexical token overlap between generated answer and retrieved context.
+- Refusal accuracy: phrase-based detection on adversarial negative cases.
 
-## Methodological Limitations
+The gold answer is not passed into generation or reranking prompts. Required keywords are used only after generation for metric computation.
 
-> [!NOTE]
-> **Methodological Transparency & Limitations**:
-> - **Sample Size**: The benchmark evaluates 15 curated gold-standard cases across 3 document domains. While representative of high-stakes enterprise use cases, larger corpora (hundreds of documents) may introduce more retrieval variance.
-> - **LLM-as-a-Judge**: Groundedness and assertion verification rely in part on model scoring and token overlap density, which carries slight linguistic bias.
-> - **Latency Trade-Off**: Two-stage re-ranking adds ~1.0-1.5s of latency due to the second-stage scoring call. DocuMind optimizes this by batching candidates and restricting the pool to top-15 candidates.
+## Limitations
+
+- Only 15 hand-authored cases and three small seeded documents are included.
+- The corpus currently yields very few chunks per document, limiting the discriminative value of Precision@5 and MRR.
+- The run does not exercise PostgreSQL, pgvector, HNSW, full-text search, RRF, database ownership filters, or multi-document balancing.
+- Groundedness is a lexical heuristic, not an LLM judge and not human adjudication.
+- MRR and recall rely on keyword matches, which can reward incidental mentions and miss paraphrases.
+- LLM outputs and provider behavior can vary; caches must be invalidated when prompts, models, dimensions, or methodology change.
+- The stored latencies include provider and cache effects and are not a controlled performance benchmark.
+
+## Reproducibility requirements
+
+A publishable rerun should record the Git commit, methodology version, provider model identifiers, embedding dimension, cache state, K, candidate count, case count, UTC timestamp, and whether each call was cached. A database-backed evaluation should be added separately before making claims about pgvector or hybrid retrieval quality.

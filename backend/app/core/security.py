@@ -3,13 +3,19 @@ Authentication layer — JWT creation, verification, and FastAPI dependencies.
 Supports access tokens (short-lived) and refresh tokens (long-lived).
 """
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 import bcrypt
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt import InvalidTokenError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.db.database import get_db
+from app.models.models import User
 
 settings = get_settings()
 
@@ -54,15 +60,20 @@ def create_access_token(
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
-def create_refresh_token(subject: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
-        days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+def create_refresh_token(
+    subject: str,
+    extra: dict = None,
+    expires_delta: timedelta = None,
+) -> str:
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     payload = {
         "sub": subject,
         "exp": expire,
         "iat": datetime.now(timezone.utc),
         "type": "refresh",
+        **(extra or {}),
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
@@ -72,11 +83,14 @@ def decode_token(token: str) -> dict:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
         )
+        UUID(payload["sub"])
+        if not payload.get("exp"):
+            raise ValueError("Missing expiration")
         return payload
-    except JWTError as e:
+    except (InvalidTokenError, ValueError, KeyError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Token invalid or expired: {e}",
+            detail="Token invalid or expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -84,6 +98,7 @@ def decode_token(token: str) -> dict:
 # ─── FastAPI dependency — inject current user ────────────────────────────────
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
     Dependency: validates Bearer token and returns the decoded payload.
@@ -95,7 +110,22 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Expected access token",
         )
+    user = (await db.execute(select(User).where(User.id == UUID(payload["sub"])))).scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account unavailable")
+    # Database identity is authoritative, including tokens issued before demo isolation.
+    payload["role"] = user.role.value
+    payload["is_demo"] = bool(payload.get("is_demo")) or user.email.casefold() == "demo@documind.app"
     return payload
+
+
+def ensure_not_demo(current_user: dict) -> None:
+    """Reject state-changing operations for public demo sessions."""
+    if current_user.get("is_demo"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Demo accounts are read-only. Create a free account to continue.",
+        )
 
 
 async def get_current_admin(

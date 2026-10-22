@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { documentsApi, queryApi } from '../../services/api'
-import toast from 'react-hot-toast'
+import { showApiError } from '../../services/toasts'
+import type { DocumentAnalysis, DocumentItem, QueryAnswer, QueryHistoryItem } from '../../types'
 
 interface Props {
-  doc: any
+  doc: DocumentItem
 }
 
 type Tab = 'overview' | 'entities' | 'qa' | 'history'
@@ -12,8 +13,15 @@ type Tab = 'overview' | 'entities' | 'qa' | 'history'
 export default function DocumentViewer({ doc }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [question, setQuestion] = useState('')
-  const [answers, setAnswers] = useState<any[]>([])
+  const [answers, setAnswers] = useState<QueryAnswer[]>([])
   const [asking, setAsking] = useState(false)
+
+  const queryClient = useQueryClient()
+  const retry = useMutation({
+    mutationFn: () => documentsApi.retry(doc.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['documents'] }),
+    onError: (error: unknown) => showApiError(error, 'Could not retry processing', `document-retry-${doc.id}`),
+  })
 
   const isReady = doc.status === 'ready'
   const isProcessing = ['pending', 'processing'].includes(doc.status)
@@ -27,15 +35,16 @@ export default function DocumentViewer({ doc }: Props) {
   })
 
   const askQuestion = async () => {
-    if (!question.trim() || asking) return
+    if (question.trim().length < 5 || asking || !isReady) return
     setAsking(true)
     const q = question.trim()
     setQuestion('')
     try {
-      const { data } = await queryApi.ask(doc.id, q)
+      const { data } = await queryApi.ask(doc.id, q, 800, answers.slice(0, 3).reverse().map(a => ({ question: a.question.slice(0, 1000), answer: a.answer.slice(0, 4000) })))
       setAnswers(prev => [data, ...prev])
-    } catch (err: any) {
-      toast.error(err?.response?.data?.detail || 'Query failed')
+    } catch (error: unknown) {
+      setQuestion(q)
+      showApiError(error, 'Query failed', `document-query-error-${doc.id}`)
     } finally {
       setAsking(false)
     }
@@ -50,10 +59,10 @@ export default function DocumentViewer({ doc }: Props) {
         display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0
       }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: '1rem', fontWeight: 600, color: '#f9fafb', margin: 0 }}>
+          <h1 style={{ overflowWrap: 'anywhere', fontSize: '1rem', fontWeight: 600, color: '#f9fafb', margin: 0 }}>
             {doc.original_filename || doc.filename}
           </h1>
-          <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '4px' }}>
             <StatusPill status={doc.status} />
             {doc.chunk_count > 0 && <Meta label="Chunks" value={doc.chunk_count} />}
             {doc.token_count > 0 && <Meta label="Tokens" value={doc.token_count.toLocaleString()} />}
@@ -77,16 +86,19 @@ export default function DocumentViewer({ doc }: Props) {
         <div style={{ padding: '24px', color: '#ef4444' }}>
           <div style={{ fontWeight: 500 }}>Processing failed</div>
           <div style={{ fontSize: '0.82rem', marginTop: '4px', color: '#9ca3af' }}>{doc.error_message}</div>
+          <button onClick={() => retry.mutate()} disabled={retry.isPending} style={{ marginTop: '16px', padding: '10px 16px', background: '#6366f1', border: 0, borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
+            {retry.isPending ? 'Retrying…' : 'Retry processing'}
+          </button>
         </div>
       )}
 
       {/* Tabs */}
       {isReady && (
         <>
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
             {([['overview', '📊 Overview'], ['entities', '🏷 Entities'], ['qa', '💬 Q&A'], ['history', '🕐 History']] as const).map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)} style={{
-                padding: '12px 20px', background: 'none', border: 'none',
+                padding: '12px 16px', whiteSpace: 'nowrap', background: 'none', border: 'none',
                 borderBottom: tab === t ? '2px solid #6366f1' : '2px solid transparent',
                 color: tab === t ? '#818cf8' : '#6b7280', cursor: 'pointer',
                 fontSize: '0.82rem', fontWeight: tab === t ? 600 : 400,
@@ -114,10 +126,11 @@ export default function DocumentViewer({ doc }: Props) {
 }
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
-function OverviewTab({ analysis, loading }: { analysis: any, loading: boolean }) {
+function OverviewTab({ analysis, loading }: { analysis?: DocumentAnalysis, loading: boolean }) {
   if (loading) return <Skeleton />
   if (!analysis) return null
   const s = analysis.sentiment
+  const keywords = analysis.keywords ?? []
 
   return (
     <div style={{ maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -129,10 +142,10 @@ function OverviewTab({ analysis, loading }: { analysis: any, loading: boolean })
       )}
 
       {/* Keywords */}
-      {analysis.keywords?.length > 0 && (
+      {keywords.length > 0 && (
         <Card title="Keywords">
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {analysis.keywords.map((k: string) => (
+            {keywords.map((k: string) => (
               <span key={k} style={{
                 padding: '4px 10px', borderRadius: '20px', fontSize: '0.75rem',
                 fontFamily: 'monospace', background: 'rgba(99,102,241,0.12)',
@@ -161,7 +174,11 @@ function OverviewTab({ analysis, loading }: { analysis: any, loading: boolean })
             </div>
           </div>
           <div style={{ marginTop: '12px', height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${s.score * 100}%`, background: sentimentColor(s.label), borderRadius: '3px', transition: 'width 0.8s ease' }} />
+            <div style={{
+              height: '100%', width: '100%', background: sentimentColor(s.label), borderRadius: '3px',
+              transform: `scaleX(${Math.min(1, Math.max(0, s.score))})`,
+              transformOrigin: 'left center', transition: 'transform 0.8s ease-out',
+            }} />
           </div>
         </Card>
       )}
@@ -170,7 +187,7 @@ function OverviewTab({ analysis, loading }: { analysis: any, loading: boolean })
 }
 
 // ─── Entities Tab ─────────────────────────────────────────────────────────────
-function EntitiesTab({ analysis, loading }: { analysis: any, loading: boolean }) {
+function EntitiesTab({ analysis, loading }: { analysis?: DocumentAnalysis, loading: boolean }) {
   if (loading) return <Skeleton />
   if (!analysis?.entities) return <div style={{ color: '#6b7280' }}>No entities found.</div>
 
@@ -188,7 +205,7 @@ function EntitiesTab({ analysis, loading }: { analysis: any, loading: boolean })
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '16px', maxWidth: '900px' }}>
       {categories.map(({ key, label, color }) => {
-        const items: string[] = e[key] || []
+        const items = e[key] || []
         if (!items.length) return null
         return (
           <Card key={key} title={label}>
@@ -209,27 +226,39 @@ function EntitiesTab({ analysis, loading }: { analysis: any, loading: boolean })
 }
 
 // ─── Q&A Tab ──────────────────────────────────────────────────────────────────
-function QATab({ question, setQuestion, onAsk, asking, answers, docReady }: any) {
+interface QATabProps {
+  question: string
+  setQuestion: (value: string) => void
+  onAsk: () => void
+  asking: boolean
+  answers: QueryAnswer[]
+  docReady: boolean
+}
+
+function QATab({ question, setQuestion, onAsk, asking, answers, docReady }: QATabProps) {
   return (
     <div style={{ maxWidth: '760px' }}>
       <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
         <input
+          aria-label="Question about this document"
+          minLength={5}
+          maxLength={1000}
           value={question}
           onChange={e => setQuestion(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && onAsk()}
           placeholder="Ask anything about this document..."
           disabled={!docReady || asking}
           style={{
-            flex: 1, padding: '11px 16px',
+            flex: 1, minWidth: 0, padding: '11px 16px',
             background: '#1a1d27', border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '8px', color: '#fff', fontSize: '0.9rem', outline: 'none'
+            borderRadius: '8px', color: '#fff', fontSize: '1rem'
           }}
         />
-        <button onClick={onAsk} disabled={asking || !question.trim()} style={{
+        <button onClick={onAsk} disabled={asking || question.trim().length < 5} style={{
           padding: '11px 20px', borderRadius: '8px',
           background: asking ? 'rgba(99,102,241,0.4)' : '#6366f1',
           border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem',
-          opacity: asking || !question.trim() ? 0.6 : 1
+          opacity: asking || question.trim().length < 5 ? 0.6 : 1
         }}>
           {asking ? '...' : 'Ask'}
         </button>
@@ -245,29 +274,30 @@ function QATab({ question, setQuestion, onAsk, asking, answers, docReady }: any)
         </div>
       )}
 
-      {answers.map((a: any, i: number) => (
+      {answers.map((a, i) => (
         <div key={i} style={{ marginBottom: '20px', animation: 'fadeIn 0.3s ease' }}>
           <Card title={`Q: ${a.question}`}>
             <p style={{ fontSize: '0.9rem', lineHeight: 1.7, color: '#d1d5db', margin: '0 0 16px' }}>{a.answer}</p>
             {a.sources?.length > 0 && (
               <div>
                 <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#4b5563', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  Sources used ({a.sources.length} chunks · similarity ≥ {Math.min(...a.sources.map((s: any) => s.similarity_score)).toFixed(2)})
+                  Retrieved evidence ({a.sources.length} passages)
                 </div>
-                {a.sources.slice(0, 3).map((s: any, j: number) => (
+                {a.sources.map((s, j) => (
                   <div key={j} style={{
                     padding: '8px 12px', marginBottom: '6px', borderRadius: '6px',
-                    background: 'rgba(255,255,255,0.03)', borderLeft: '2px solid rgba(99,102,241,0.4)',
+                    background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(99,102,241,0.4)',
+                    overflowWrap: 'anywhere', whiteSpace: 'pre-wrap',
                     fontSize: '0.78rem', color: '#9ca3af', lineHeight: 1.6
                   }}>
                     <span style={{ fontFamily: 'monospace', color: '#6366f1', marginRight: '8px' }}>
-                      [{j + 1}] {s.similarity_score.toFixed(2)}
+                      Source {j + 1}{s.page_number ? ` · Page ${s.page_number}` : ''}
                     </span>
                     {s.content}
                   </div>
                 ))}
                 <div style={{ fontSize: '0.65rem', color: '#374151', fontFamily: 'monospace', marginTop: '4px' }}>
-                  {a.tokens_used} tokens · {a.latency_ms}ms {a.from_cache && '· ⚡ cached'}
+                  {a.tokens_used} estimated tokens · {a.latency_ms}ms {a.from_cache && '· ⚡ cached'}
                 </div>
               </div>
             )}
@@ -286,12 +316,12 @@ function HistoryTab({ docId }: { docId: string }) {
   })
 
   if (isLoading) return <Skeleton />
-  const items = data?.items || []
+  const items: QueryHistoryItem[] = data?.items || []
   if (!items.length) return <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>No queries yet for this document.</div>
 
   return (
     <div style={{ maxWidth: '760px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      {items.map((q: any) => (
+      {items.map(q => (
         <div key={q.id} style={{
           padding: '12px 16px', borderRadius: '8px',
           background: '#1a1d27', border: '1px solid rgba(255,255,255,0.07)'
@@ -299,7 +329,7 @@ function HistoryTab({ docId }: { docId: string }) {
           <div style={{ fontSize: '0.82rem', fontWeight: 500, color: '#c7d2fe', marginBottom: '6px' }}>{q.question}</div>
           <div style={{ fontSize: '0.8rem', color: '#9ca3af', lineHeight: 1.6 }}>{q.answer.substring(0, 200)}{q.answer.length > 200 ? '...' : ''}</div>
           <div style={{ fontSize: '0.65rem', color: '#374151', marginTop: '6px', fontFamily: 'monospace' }}>
-            {q.tokens_used} tokens · {q.latency_ms}ms {q.from_cache && '⚡'}
+            {q.tokens_used} estimated tokens · {q.latency_ms}ms {q.from_cache && '⚡'}
           </div>
         </div>
       ))}
@@ -338,7 +368,7 @@ function StatusPill({ status }: { status: string }) {
   )
 }
 
-function Meta({ label, value }: { label: string; value: any }) {
+function Meta({ label, value }: { label: string; value: string | number }) {
   return (
     <span style={{ fontSize: '0.7rem', color: '#4b5563', fontFamily: 'monospace' }}>
       {label}: <span style={{ color: '#9ca3af' }}>{value}</span>

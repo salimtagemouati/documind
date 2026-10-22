@@ -20,6 +20,7 @@ interface Props {
   onToggleSelect?: (id: string) => void
   onDelete: (id: string) => void
   progressMap?: Record<string, ProgressEvent>
+  readOnly?: boolean
 }
 
 const statusColor: Record<string, string> = {
@@ -59,7 +60,8 @@ export default function DocumentList({
   onSelect,
   onToggleSelect,
   onDelete,
-  progressMap = {}
+  progressMap = {},
+  readOnly = false,
 }: Props) {
   if (loading) {
     return (
@@ -150,12 +152,13 @@ export default function DocumentList({
             )}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <div style={{
+                <button type="button" onClick={(event) => { event.stopPropagation(); onSelect(doc.id) }} style={{
+                  width: '100%', textAlign: 'left', border: 0, background: 'none', cursor: 'pointer',
                   fontSize: '0.82rem', fontWeight: 500, color: '#e5e7eb',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                 }}>
                   {doc.original_filename || doc.filename}
-                </div>
+                </button>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '4px', alignItems: 'center' }}>
                   <span style={{
                     fontSize: '0.62rem', fontFamily: 'monospace',
@@ -196,11 +199,13 @@ export default function DocumentList({
                       {/* Progress bar fill */}
                       <div
                         style={{
-                          width: `${progress.progress}%`,
+                          width: '100%',
                           height: '100%',
                           background: `linear-gradient(90deg, ${stageColors[progress.stage] || '#6366f1'}, ${stageColors[progress.stage] || '#8b5cf6'}88)`,
                           borderRadius: '2px',
-                          transition: 'width 0.5s ease-out',
+                          transform: `scaleX(${Math.min(100, Math.max(0, progress.progress)) / 100})`,
+                          transformOrigin: 'left center',
+                          transition: 'transform 0.5s ease-out',
                           position: 'relative',
                         }}
                       >
@@ -236,7 +241,7 @@ export default function DocumentList({
                   </div>
                 )}
               </div>
-              <button
+              {!readOnly && <button
                 onClick={e => { e.stopPropagation(); onDelete(doc.id) }}
                 style={{
                   background: 'transparent', border: 'none', color: '#4b5563',
@@ -244,7 +249,7 @@ export default function DocumentList({
                   flexShrink: 0,
                 }}
                 title="Delete"
-              >✕</button>
+              >✕</button>}
             </div>
           </div>
         )

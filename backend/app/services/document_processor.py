@@ -11,6 +11,7 @@ import io
 import re
 from pathlib import Path
 from typing import List, Tuple
+from zipfile import BadZipFile, ZipFile
 
 import tiktoken
 from docx import Document as DocxDocument
@@ -30,18 +31,33 @@ _tokenizer = tiktoken.get_encoding("cl100k_base")
 def extract_text_from_pdf(file_bytes: bytes) -> Tuple[str, int]:
     """Extract full text from PDF. Returns (text, page_count)."""
     reader = PdfReader(io.BytesIO(file_bytes))
+    if reader.is_encrypted:
+        raise ValueError("Encrypted PDFs are not supported. Upload an unlocked copy.")
+    if len(reader.pages) > 500:
+        raise ValueError("PDF exceeds the 500-page processing limit.")
     pages = []
     for page in reader.pages:
         text = page.extract_text() or ""
         pages.append(text.strip())
-    full_text = "\n\n".join(p for p in pages if p)
+    full_text = "\f".join(pages)
     return full_text, len(reader.pages)
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
     """Extract text from DOCX preserving paragraph structure."""
+    try:
+        with ZipFile(io.BytesIO(file_bytes)) as archive:
+            if sum(item.file_size for item in archive.infolist()) > 50 * 1024 * 1024:
+                raise ValueError("DOCX expanded content exceeds 50 MB.")
+    except BadZipFile as exc:
+        raise ValueError("Invalid DOCX file.") from exc
     doc = DocxDocument(io.BytesIO(file_bytes))
-    paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+    paragraphs = []
+    for block in doc.iter_inner_content():
+        if hasattr(block, "rows"):
+            paragraphs.extend(" | ".join(cell.text for cell in row.cells) for row in block.rows)
+        elif block.text.strip():
+            paragraphs.append(block.text.strip())
     return "\n\n".join(paragraphs)
 
 
@@ -77,25 +93,16 @@ def extract_text(file_bytes: bytes, file_type: str) -> Tuple[str, int]:
     text = re.sub(r"\n{3,}", "\n\n", text)  # Collapse excessive blank lines
     text = re.sub(r"[ \t]{2,}", " ", text)  # Collapse inline whitespace
 
-    return text.strip(), pages
+    if not text.strip():
+        raise ValueError("No readable text found. Scanned PDFs require OCR before upload.")
+    if len(text) > 2_000_000:
+        raise ValueError("Extracted text exceeds the 2 million character limit.")
+    return text, pages
 
 
 # ─── Chunking ────────────────────────────────────────────────────────────────
 def count_tokens(text: str) -> int:
-    return len(_tokenizer.encode(text))
-
-
-def _split_into_sentences(text: str) -> List[str]:
-    """Naive but effective sentence splitter that handles common edge cases."""
-    # Split on sentence-ending punctuation followed by space+capital or newline
-    pattern = r'(?<=[.!?])\s+(?=[A-Z\u00C0-\u017E\d])'
-    sentences = re.split(pattern, text)
-    # Also split on double newlines (paragraph breaks)
-    result = []
-    for sent in sentences:
-        parts = sent.split("\n\n")
-        result.extend(p.strip() for p in parts if p.strip())
-    return result
+    return len(_tokenizer.encode(text, disallowed_special=()))
 
 
 def chunk_text(
@@ -120,110 +127,57 @@ def chunk_text(
     2. Greedily build chunks by adding sentences until chunk_size is reached
     3. Start next chunk from the overlap boundary (last N tokens of previous chunk)
     """
-    chunk_size = chunk_size or settings.CHUNK_SIZE
-    chunk_overlap = chunk_overlap or settings.CHUNK_OVERLAP
-    max_chunks = settings.MAX_CHUNKS_PER_DOC
-
-    sentences = _split_into_sentences(text)
-    if not sentences:
-        return []
-
+    chunk_size = settings.CHUNK_SIZE if chunk_size is None else chunk_size
+    chunk_overlap = settings.CHUNK_OVERLAP if chunk_overlap is None else chunk_overlap
+    if chunk_size <= 0 or not 0 <= chunk_overlap < chunk_size:
+        raise ValueError("Require chunk_size > 0 and 0 <= chunk_overlap < chunk_size")
     chunks = []
-    current_sentences: List[str] = []
-    current_tokens = 0
-    char_pos = 0
-
-    for sentence in sentences:
-        s_tokens = count_tokens(sentence)
-
-        # If single sentence exceeds chunk size, split it hard
-        if s_tokens > chunk_size:
-            # Flush current chunk
-            if current_sentences:
-                content = " ".join(current_sentences)
-                chunks.append({
-                    "content": content,
-                    "chunk_index": len(chunks),
-                    "token_count": current_tokens,
-                    "char_start": char_pos - len(content),
-                    "char_end": char_pos,
-                })
-                current_sentences, current_tokens = [], 0
-
-            # Hard-split the long sentence by words
-            words = sentence.split()
-            word_chunk: List[str] = []
-            w_tokens = 0
-            for word in words:
-                wt = count_tokens(word)
-                if w_tokens + wt > chunk_size and word_chunk:
-                    content = " ".join(word_chunk)
-                    chunks.append({
-                        "content": content,
-                        "chunk_index": len(chunks),
-                        "token_count": w_tokens,
-                        "char_start": 0,
-                        "char_end": 0,
-                    })
-                    word_chunk, w_tokens = [], 0
-                word_chunk.append(word)
-                w_tokens += wt
-            if word_chunk:
-                current_sentences = [" ".join(word_chunk)]
-                current_tokens = w_tokens
-            continue
-
-        # If adding this sentence exceeds chunk size, flush and start new chunk
-        if current_tokens + s_tokens > chunk_size and current_sentences:
-            content = " ".join(current_sentences)
+    page_offset = 0
+    # PDF extraction preserves physical page boundaries, including blank pages.
+    pages = text.split("\f")
+    for page_index, page in enumerate(pages):
+        start = 0
+        while start < len(page):
+            while start < len(page) and page[start].isspace():
+                start += 1
+            if start == len(page):
+                break
+            low, high = start + 1, min(len(page), start + chunk_size * 8)
+            end = start
+            while low <= high:
+                mid = (low + high) // 2
+                if count_tokens(page[start:mid]) <= chunk_size:
+                    end, low = mid, mid + 1
+                else:
+                    high = mid - 1
+            if end == start:
+                raise ValueError("Chunk size cannot encode a single character")
+            if end < len(page):
+                boundaries = list(re.finditer(r"[.!?]\s+|\n\n|\s+", page[start:end]))
+                if boundaries and boundaries[-1].end() >= (end - start) // 2:
+                    end = start + boundaries[-1].end()
+            content = page[start:end]
             chunks.append({
-                "content": content,
-                "chunk_index": len(chunks),
-                "token_count": current_tokens,
-                "char_start": 0,
-                "char_end": 0,
+                "content": content, "chunk_index": len(chunks),
+                "token_count": count_tokens(content),
+                "char_start": page_offset + start, "char_end": page_offset + end,
+                "page_number": page_index + 1 if len(pages) > 1 else None,
             })
-
-            # Build overlap: keep sentences from the end of the previous chunk
-            overlap_sentences: List[str] = []
-            overlap_tokens = 0
-            for prev_s in reversed(current_sentences):
-                pt = count_tokens(prev_s)
-                if overlap_tokens + pt > chunk_overlap:
-                    break
-                overlap_sentences.insert(0, prev_s)
-                overlap_tokens += pt
-
-            current_sentences = overlap_sentences + [sentence]
-            current_tokens = overlap_tokens + s_tokens
-        else:
-            current_sentences.append(sentence)
-            current_tokens += s_tokens
-
-        if len(chunks) >= max_chunks:
-            logger.warning(
-                "chunk_limit_reached",
-                max_chunks=max_chunks,
-                document_truncated=True,
-            )
-            break
-
-    # Flush the last partial chunk
-    if current_sentences and len(chunks) < max_chunks:
-        content = " ".join(current_sentences)
-        chunks.append({
-            "content": content,
-            "chunk_index": len(chunks),
-            "token_count": current_tokens,
-            "char_start": 0,
-            "char_end": 0,
-        })
-
-    logger.info(
-        "document_chunked",
-        total_chunks=len(chunks),
-        total_tokens=sum(c["token_count"] for c in chunks),
-    )
+            if len(chunks) > settings.MAX_CHUNKS_PER_DOC:
+                raise ValueError("Document exceeds the chunk limit; split it into smaller files.")
+            if end == len(page):
+                break
+            next_start = end
+            if chunk_overlap:
+                low, high = start + 1, end
+                while low <= high:
+                    mid = (low + high) // 2
+                    if count_tokens(page[mid:end]) <= chunk_overlap:
+                        next_start, high = mid, mid - 1
+                    else:
+                        low = mid + 1
+            start = max(start + 1, next_start)
+        page_offset += len(page) + 1
     return chunks
 
 
@@ -234,6 +188,8 @@ def validate_file(filename: str, file_size_bytes: int, file_type: str) -> None:
         raise ValueError(
             f"File type '{ext}' not supported. Allowed: {settings.ALLOWED_EXTENSIONS}"
         )
+    if file_size_bytes <= 0:
+        raise ValueError("The uploaded file is empty.")
     max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     if file_size_bytes > max_bytes:
         raise ValueError(

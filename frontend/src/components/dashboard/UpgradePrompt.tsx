@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { billingApi } from '../../services/api'
-import toast from 'react-hot-toast'
+import { showApiError } from '../../services/toasts'
 
 interface Props {
   type: 'documents' | 'queries'
@@ -10,6 +10,12 @@ interface Props {
 
 export default function UpgradePrompt({ type, onClose }: Props) {
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const { data: billingConfig } = useQuery({
+    queryKey: ['billingConfig'],
+    queryFn: () => billingApi.getConfig().then(response => response.data),
+    staleTime: 5 * 60_000,
+  })
+  const paymentsEnabled = billingConfig?.payments_enabled ?? false
 
   const checkoutMutation = useMutation({
     mutationFn: () => billingApi.createCheckout(),
@@ -17,8 +23,8 @@ export default function UpgradePrompt({ type, onClose }: Props) {
       setIsRedirecting(true)
       window.location.href = res.data.checkout_url
     },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.detail || 'Unable to start checkout')
+    onError: (error: unknown) => {
+      showApiError(error, 'Unable to start checkout', 'upgrade-checkout-error')
     },
   })
 
@@ -71,7 +77,7 @@ export default function UpgradePrompt({ type, onClose }: Props) {
           <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#818cf8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             Pro includes
           </div>
-          {['Unlimited documents', 'Unlimited queries', 'Priority processing', 'Advanced analytics'].map((f, i) => (
+          {['Unlimited documents', 'Unlimited daily query quota'].map((f, i) => (
             <div key={i} style={{ fontSize: '0.82rem', color: '#d1d5db', padding: '3px 0', display: 'flex', gap: '6px', alignItems: 'center' }}>
               <span style={{ color: '#8b5cf6' }}>✓</span> {f}
             </div>
@@ -80,16 +86,16 @@ export default function UpgradePrompt({ type, onClose }: Props) {
 
         <button
           onClick={() => checkoutMutation.mutate()}
-          disabled={checkoutMutation.isPending || isRedirecting}
+          disabled={checkoutMutation.isPending || isRedirecting || !paymentsEnabled}
           style={{
             width: '100%', padding: '14px', borderRadius: '12px',
             background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
             border: 'none', color: '#fff', fontWeight: 600, fontSize: '0.95rem',
-            cursor: 'pointer', marginBottom: '12px',
-            opacity: (checkoutMutation.isPending || isRedirecting) ? 0.7 : 1,
+            cursor: paymentsEnabled ? 'pointer' : 'not-allowed', marginBottom: '12px',
+            opacity: (checkoutMutation.isPending || isRedirecting || !paymentsEnabled) ? 0.7 : 1,
           }}
         >
-          {isRedirecting ? '↗ Redirecting to Stripe...' : checkoutMutation.isPending ? 'Loading...' : 'Upgrade to Pro — $12/mo'}
+          {isRedirecting ? 'Redirecting to Stripe...' : checkoutMutation.isPending ? 'Loading...' : paymentsEnabled ? 'Upgrade to Pro' : 'Payments disabled'}
         </button>
 
         <button

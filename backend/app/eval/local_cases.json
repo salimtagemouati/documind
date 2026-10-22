@@ -1,0 +1,8 @@
+[
+  {"id":"warranty","pages":["Purchase agreement. Supplier is Northwind.","Warranty coverage lasts 24 months after delivery."],"question":"How long does warranty coverage last?","expected_answer":"24 months","expected_page":2},
+  {"id":"blank-page","pages":["Employment agreement.","","Annual vacation allowance is 25 days."],"question":"What is the annual vacation allowance?","expected_answer":"25 days","expected_page":3},
+  {"id":"termination","pages":["Termination requires 60 days written notice.","Invoices are payable monthly."],"question":"What notice does termination require?","expected_answer":"60 days","expected_page":1},
+  {"id":"retention","pages":["Security overview.","Archived data retention is 90 days."],"question":"What is archived data retention?","expected_answer":"90 days","expected_page":2},
+  {"id":"budget","pages":["Project charter.","Delivery schedule is quarterly.","Approved project budget is EUR 45000."],"question":"What is the approved project budget?","expected_answer":"EUR 45000","expected_page":3},
+  {"id":"support","pages":["Support response time is 4 business hours.","Support office is in Rabat."],"question":"What is the support response time?","expected_answer":"4 business hours","expected_page":1}
+]
