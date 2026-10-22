@@ -3,11 +3,12 @@ Query (RAG) API Routes
 POST /api/v1/query/          — ask a question about a document
 GET  /api/v1/query/history   — get user's query history
 """
+import asyncio
 import uuid
 from uuid import UUID
 
 import litellm
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,7 +73,8 @@ async def query_document(
 
     # Check cache first (same question + document → return cached answer)
     query_id = uuid.uuid4()
-    cached = await get_cached_answer(str(payload.document_id), payload.question)
+    cache_question = f"v2:{payload.max_tokens}:" + payload.question
+    cached = await get_cached_answer(str(payload.document_id), cache_question) if not payload.history else None
     if cached:
         logger.info("query_cache_hit", document_id=str(payload.document_id))
         cached["from_cache"] = True
@@ -89,7 +91,7 @@ async def query_document(
 
     # Run RAG pipeline with pgvector and two-stage re-ranking
     try:
-        response = await answer_question(
+        response = await asyncio.wait_for(answer_question(
             document_id=payload.document_id,
             user_id=user_id,
             question=payload.question,
@@ -97,13 +99,19 @@ async def query_document(
             filename=doc.original_filename,
             db=db,
             max_tokens=payload.max_tokens,
-        )
+            history=[turn.model_dump() for turn in payload.history],
+        ), timeout=90)
+    except (litellm.AuthenticationError, litellm.BadRequestError, litellm.NotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI provider configuration is unavailable. Check the server API key and model settings.",
+        ) from None
     except litellm.RateLimitError:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="AI service rate limit reached. Please try again later.",
         )
-    except litellm.Timeout:
+    except (litellm.Timeout, TimeoutError):
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="AI service timed out. Please try again later.",
@@ -156,7 +164,8 @@ async def query_document(
         "from_cache": True,
         "query_id": str(query_id),
     }
-    await set_cached_answer(str(payload.document_id), payload.question, cache_payload)
+    if not payload.history:
+        await set_cached_answer(str(payload.document_id), cache_question, cache_payload)
 
     return response
 
@@ -213,7 +222,7 @@ async def query_multiple_documents(
 
     # Synthesize across documents with balanced retrieval plus batched LLM reranking
     try:
-        response = await synthesize_multi_document_query(
+        response = await asyncio.wait_for(synthesize_multi_document_query(
             document_ids=payload.document_ids,
             user_id=user_id,
             question=payload.question,
@@ -222,13 +231,18 @@ async def query_multiple_documents(
             db=db,
             max_tokens=payload.max_tokens,
             enable_rerank=payload.enable_rerank,
-        )
+        ), timeout=90)
+    except (litellm.AuthenticationError, litellm.BadRequestError, litellm.NotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI provider configuration is unavailable. Check the server API key and model settings.",
+        ) from None
     except litellm.RateLimitError:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="AI service rate limit reached. Please try again later.",
         )
-    except litellm.Timeout:
+    except (litellm.Timeout, TimeoutError):
         raise HTTPException(
             status_code=status.HTTP_504_GATEWAY_TIMEOUT,
             detail="AI service timed out. Please try again later.",
@@ -274,8 +288,8 @@ async def query_multiple_documents(
 @router.get("/history", response_model=PaginatedResponse)
 async def get_query_history(
     document_id: UUID = None,
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

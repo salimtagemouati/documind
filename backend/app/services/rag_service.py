@@ -85,6 +85,8 @@ async def embed_texts(texts: List[str]) -> np.ndarray:
             raise
 
     arr = np.array(all_embeddings, dtype=np.float32)
+    if arr.shape != (len(texts), EMBEDDING_DIM) or not np.isfinite(arr).all() or np.any(np.linalg.norm(arr, axis=1) == 0):
+        raise ValueError("Embedding provider returned invalid dimensions or values")
     # Re-normalize vectors to unit norm (Matryoshka truncation breaks unit length)
     norms = np.linalg.norm(arr, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
@@ -117,6 +119,8 @@ async def embed_query(query: str) -> np.ndarray:
         logger.error("query_embedding_failed", error_type=type(e).__name__, model=settings.EMBEDDING_MODEL)
         raise
 
+    if vec.shape != (EMBEDDING_DIM,) or not np.isfinite(vec).all() or not np.linalg.norm(vec):
+        raise ValueError("Embedding provider returned an invalid query vector")
     # Strictly re-normalize to unit vector
     norm = np.linalg.norm(vec)
     if norm > 0:
@@ -150,11 +154,19 @@ async def build_document_index(db: AsyncSession, document_id: UUID, chunks: List
     existing_chunks = result.scalars().all()
     chunk_map = {c.chunk_index: c for c in existing_chunks}
 
+    incoming_indices = {chunk["chunk_index"] for chunk in chunks}
+    for old_chunk in existing_chunks:
+        if old_chunk.chunk_index not in incoming_indices:
+            await db.delete(old_chunk)
+
     for idx, c_data in enumerate(chunks):
         vec_list = None if embeddings is None else embeddings[idx].tolist()
         chunk_obj = chunk_map.get(c_data["chunk_index"])
         if chunk_obj:
             chunk_obj.embedding = vec_list
+            chunk_obj.content = c_data["content"]
+            chunk_obj.token_count = c_data["token_count"]
+            chunk_obj.page_number = c_data.get("page_number")
         else:
             new_chunk = DocumentChunk(
                 document_id=document_id,
@@ -324,8 +336,9 @@ async def retrieve_similar_chunks(
                     ).desc())
                     .limit(top_k * 2)
                 )
-                fts_res = await db.execute(fts_stmt)
-                fts_rows = fts_res.all()
+                async with db.begin_nested():
+                    fts_res = await db.execute(fts_stmt)
+                    fts_rows = fts_res.all()
                 for rank, (chunk, orig_name, fname, _) in enumerate(fts_rows, start=1):
                     cid_str = str(chunk.id)
                     if cid_str not in candidates:
@@ -365,7 +378,7 @@ async def retrieve_similar_chunks(
     logger.info(
         "chunks_retrieved_pgvector",
         doc_count=len(doc_ids),
-        query_preview=query[:60],
+        query_length=len(query),
         retrieved=len(final_chunks),
     )
     return final_chunks

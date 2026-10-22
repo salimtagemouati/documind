@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
   PYTHON_VERSION: "3.11"
 
 jobs:
@@ -81,6 +81,15 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ""
         run: pytest tests/ -q --cov=app --cov-report=term-missing --cov-fail-under=60
 
+      - name: Fresh-process local smoke test
+        run: python ../scripts/smoke_test.py
+
+      - name: Local retrieval provenance evaluation
+        run: python ../scripts/evaluate_local.py
+
+      - name: PostgreSQL pgvector integration
+        run: python ../scripts/check_pgvector.py
+
   # ─── Frontend: typecheck + build ────────────────────────────
   frontend:
     name: Frontend — TypeCheck & Build
@@ -100,6 +109,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Frontend component tests
+        run: npm test
 
       - name: TypeScript type check
         run: npx tsc --noEmit
@@ -129,4 +144,4 @@ jobs:
         run: docker build -t documind-api:ci ./backend
 
       - name: Verify image
-        run: docker run --rm documind-api:ci python -c "import app; print('App module importable')"
+        run: python scripts/check_container.py documind-api:ci

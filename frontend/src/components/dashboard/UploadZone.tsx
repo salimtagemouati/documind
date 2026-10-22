@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 
 interface Props {
@@ -7,7 +7,9 @@ interface Props {
 }
 
 export default function UploadZone({ onDrop, loading }: Props) {
+  const [error, setError] = useState<string | null>(null)
   const handleDrop = useCallback((accepted: File[]) => {
+    setError(null)
     if (accepted[0]) onDrop(accepted[0])
   }, [onDrop])
 
@@ -15,12 +17,14 @@ export default function UploadZone({ onDrop, loading }: Props) {
     onDrop: handleDrop,
     accept: { 'application/pdf': ['.pdf'], 'text/plain': ['.txt'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'], 'text/markdown': ['.md'] },
     maxFiles: 1,
+    maxSize: 20 * 1024 * 1024,
+    onDropRejected: (rejected) => setError(rejected[0]?.errors[0]?.message || 'This file cannot be uploaded.'),
     disabled: loading,
   })
 
   return (
     <div
-      {...getRootProps()}
+      {...getRootProps({ role: 'button', 'aria-label': 'Upload document' })}
       style={{
         border: `2px dashed ${isDragActive ? '#6366f1' : 'rgba(255,255,255,0.1)'}`,
         borderRadius: '10px',
@@ -32,7 +36,7 @@ export default function UploadZone({ onDrop, loading }: Props) {
         opacity: loading ? 0.6 : 1,
       }}
     >
-      <input {...getInputProps()} />
+      <input {...getInputProps({ 'aria-label': 'Choose document file' })} />
       <div style={{ fontSize: '1.5rem', marginBottom: '8px' }}>{loading ? '⏳' : '📤'}</div>
       <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#9ca3af', marginBottom: '4px' }}>
         {loading ? 'Uploading...' : isDragActive ? 'Drop it!' : 'Upload Document'}
@@ -40,6 +44,7 @@ export default function UploadZone({ onDrop, loading }: Props) {
       <div style={{ fontSize: '0.65rem', color: '#4b5563', fontFamily: 'monospace' }}>
         PDF · DOCX · TXT · MD · max 20MB
       </div>
+      {error && <p role="alert" style={{ color: '#fca5a5', fontSize: '0.8rem', marginTop: '10px' }}>{error}</p>}
     </div>
   )
 }

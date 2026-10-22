@@ -1,0 +1,12 @@
+{
+  "model": "gemini/gemini-3.5-flash-lite",
+  "database": "disposable PostgreSQL/pgvector",
+  "fixtures": "synthetic only",
+  "checks": [],
+  "status": "failed",
+  "error_type": "AssertionError",
+  "error": "Processing: failed (Document processing timed out. Please retry later or upload a smaller file.)",
+  "pipeline_diagnostics": [
+    "2026-10-21T20:02:32.583550Z [error    ] pipeline_failed                [app.api.routes.documents] document_id=74fe0bc3-7751-4df8-bf6f-9e28e2f9413a error_type=TimeoutError provider_status_code=None stage=analysis"
+  ]
+}

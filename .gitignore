@@ -15,6 +15,7 @@ env/
 # Env files — NEVER commit secrets
 .env
 .env.local
+.env.production
 .env.*.local
 backend/.env
 frontend/.env

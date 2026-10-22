@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -37,6 +38,8 @@ OPTIONAL_SECRETS = {
 
 NON_SECRET_DEFAULTS = {
     "ENVIRONMENT": "production",
+    "STORAGE_BACKEND": "supabase",
+    "DOCUMENT_PROCESSING_TIMEOUT_SECONDS": "120",
     "DEBUG": "false",
     "SUPABASE_BUCKET": "documents",
     "LLM_PROVIDER": "gemini",
@@ -47,7 +50,8 @@ NON_SECRET_DEFAULTS = {
     "RAG_TOP_K": "6",
     "RAG_INITIAL_TOP_K": "15",
     "RAG_SIMILARITY_THRESHOLD": "0.50",
-    "ENABLE_RERANKING": "true",
+    "ENABLE_RERANKING": "false",
+    "ANALYSIS_MODE": "combined",
     "ENABLE_HYBRID_SEARCH": "true",
 }
 
@@ -78,6 +82,7 @@ PASSTHROUGH_NON_SECRETS = {
 REQUIRED_CONFIGURATION = {
     *REQUIRED_SECRETS,
     "SUPABASE_URL",
+    "REDIS_URL",
     "ALLOWED_ORIGINS",
     "FRONTEND_URL",
 }
@@ -90,6 +95,7 @@ def _is_placeholder(value: str) -> bool:
         or "replace_me" in normalized
         or "replace-me" in normalized
         or "your-project" in normalized
+        or "your_" in normalized
         or "placeholder" in normalized
         or ".example." in normalized
         or normalized.endswith(".invalid")
@@ -111,7 +117,7 @@ def invalid_configuration_keys(values: dict[str, str]) -> list[str]:
     }
 
     database_url = values.get("DATABASE_URL", "")
-    if database_url.lower().startswith("sqlite"):
+    if not database_url.lower().startswith("postgresql+asyncpg://"):
         invalid.add("DATABASE_URL")
     else:
         database_host = (urlparse(database_url).hostname or "").lower()
@@ -127,18 +133,41 @@ def invalid_configuration_keys(values: dict[str, str]) -> list[str]:
             invalid.add("DATABASE_URL")
 
     frontend_url = values.get("FRONTEND_URL", "")
-    if frontend_url and _is_local_url(frontend_url):
+    if frontend_url and (_is_local_url(frontend_url) or urlparse(frontend_url).scheme != "https"):
         invalid.add("FRONTEND_URL")
 
-    origins = [origin.strip() for origin in values.get("ALLOWED_ORIGINS", "").split(",") if origin.strip()]
-    if origins and not any(not _is_local_url(origin) for origin in origins):
+    raw_origins = values.get("ALLOWED_ORIGINS", "")
+    try:
+        origins = json.loads(raw_origins) if raw_origins.startswith("[") else raw_origins.split(",")
+        if not isinstance(origins, list) or not origins or any(
+            not isinstance(origin, str) or _is_local_url(origin.strip())
+            or urlparse(origin.strip()).scheme != "https" or not urlparse(origin.strip()).hostname
+            or urlparse(origin.strip()).path not in ("", "/") or urlparse(origin.strip()).query
+            for origin in origins
+        ):
+            invalid.add("ALLOWED_ORIGINS")
+    except (ValueError, TypeError):
         invalid.add("ALLOWED_ORIGINS")
+    if values.get("STORAGE_BACKEND", "supabase") != "supabase":
+        invalid.add("STORAGE_BACKEND")
+    if len(values.get("SECRET_KEY", "")) < 32:
+        invalid.add("SECRET_KEY")
 
     redis_url = values.get("REDIS_URL", "")
-    if redis_url and (_is_placeholder(redis_url) or _is_local_url(redis_url)):
+    if redis_url and (_is_placeholder(redis_url) or _is_local_url(redis_url) or urlparse(redis_url).scheme != "rediss"):
         invalid.add("REDIS_URL")
 
     return sorted(invalid)
+
+
+def build_environment(values: dict[str, str]) -> dict[str, str]:
+    """Carry supported configuration through; never silently replace tested models."""
+    allowed = PASSTHROUGH_NON_SECRETS | NON_SECRET_DEFAULTS.keys()
+    return {
+        **NON_SECRET_DEFAULTS,
+        **{key: values[key] for key in allowed if values.get(key)},
+        "ENVIRONMENT": "production", "DEBUG": "false", "STORAGE_BACKEND": "supabase",
+    }
 
 
 def run(command: list[str], *, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -209,17 +238,19 @@ def ensure_secret(project: str, secret_name: str, secret_value: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", default=None)
+    parser.add_argument("--env-file", type=Path, default=ENV_FILE, help="Private environment file; defaults to backend/.env")
     parser.add_argument("--region", default=os.environ.get("CLOUD_RUN_REGION", "europe-west1"))
     parser.add_argument("--service", default="documind-api")
     parser.add_argument("--service-account", required=True)
     parser.add_argument("--apply", action="store_true", help="Create secrets and deploy")
     args = parser.parse_args()
 
-    if not ENV_FILE.exists():
+    env_path = args.env_file.resolve()
+    if not env_path.exists():
         print("backend/.env is required and must remain untracked", file=sys.stderr)
         return 2
 
-    values = {key: value for key, value in dotenv_values(ENV_FILE).items() if value}
+    values = {key: value for key, value in dotenv_values(env_path).items() if value}
     invalid = invalid_configuration_keys(values)
     if invalid:
         print(
@@ -234,10 +265,7 @@ def main() -> int:
         for env_name, secret_name in {**REQUIRED_SECRETS, **OPTIONAL_SECRETS}.items()
         if values.get(env_name)
     }
-    environment = {
-        **NON_SECRET_DEFAULTS,
-        **{key: values[key] for key in PASSTHROUGH_NON_SECRETS if values.get(key)},
-    }
+    environment = build_environment(values)
 
     print(
         f"Cloud Run plan: project={project}, region={args.region}, service={args.service}, "

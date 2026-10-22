@@ -1,0 +1,13 @@
+
+> documind-frontend@1.0.0 build
+> tsc && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 489 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.63 kB │ gzip:   0.39 kB
+dist/assets/index-Dq3HtHDX.css   12.45 kB │ gzip:   3.32 kB
+dist/assets/index-BNFPZpv1.js   436.51 kB │ gzip: 136.86 kB
+✓ built in 604ms

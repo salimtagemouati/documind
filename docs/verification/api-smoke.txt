@@ -1,0 +1,1 @@
+PASS: real API startup, readiness, demo, analyses, write protection, registration, tenant isolation, empty-file validation, malformed-PDF failure and deletion

@@ -83,17 +83,19 @@ export default function Dashboard() {
       setSelectedDocIds(prev => prev.filter(id => id !== deletedId))
       toast.success('Document deleted')
     },
+    onError: (error: unknown) => showApiError(error, 'Delete failed. Please retry.', 'document-delete-error'),
   })
 
   const selectedDocs = (documents as DocumentItem[]).filter(document => selectedDocIds.includes(document.id))
 
   const handleSelectDoc = (id: string) => {
     setSelectedDocIds([id])
+    if (window.matchMedia('(max-width: 760px)').matches) setSidebarOpen(false)
   }
 
   const handleToggleSelect = (id: string) => {
     setSelectedDocIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 5 ? [...prev, id] : prev
     )
   }
 
@@ -219,15 +221,16 @@ export default function Dashboard() {
         </aside>
 
         {/* Main content */}
-        <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <main style={{ minWidth: 0, flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           {selectedDocs.length > 1 ? (
             <MultiDocViewer
+              key={selectedDocIds.slice().sort().join(',')}
               selectedDocs={selectedDocs}
               onDeselectDoc={handleDeselectDoc}
               onClearAll={handleClearAll}
             />
           ) : selectedDocs.length === 1 ? (
-            <DocumentViewer doc={selectedDocs[0]} />
+            <DocumentViewer key={selectedDocs[0].id} doc={selectedDocs[0]} />
           ) : (
             <EmptyState docCount={documents.length} />
           )}

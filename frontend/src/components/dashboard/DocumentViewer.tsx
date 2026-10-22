@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { documentsApi, queryApi } from '../../services/api'
 import { showApiError } from '../../services/toasts'
 import type { DocumentAnalysis, DocumentItem, QueryAnswer, QueryHistoryItem } from '../../types'
@@ -16,6 +16,13 @@ export default function DocumentViewer({ doc }: Props) {
   const [answers, setAnswers] = useState<QueryAnswer[]>([])
   const [asking, setAsking] = useState(false)
 
+  const queryClient = useQueryClient()
+  const retry = useMutation({
+    mutationFn: () => documentsApi.retry(doc.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['documents'] }),
+    onError: (error: unknown) => showApiError(error, 'Could not retry processing', `document-retry-${doc.id}`),
+  })
+
   const isReady = doc.status === 'ready'
   const isProcessing = ['pending', 'processing'].includes(doc.status)
 
@@ -28,14 +35,15 @@ export default function DocumentViewer({ doc }: Props) {
   })
 
   const askQuestion = async () => {
-    if (!question.trim() || asking) return
+    if (question.trim().length < 5 || asking || !isReady) return
     setAsking(true)
     const q = question.trim()
     setQuestion('')
     try {
-      const { data } = await queryApi.ask(doc.id, q)
+      const { data } = await queryApi.ask(doc.id, q, 800, answers.slice(0, 3).reverse().map(a => ({ question: a.question.slice(0, 1000), answer: a.answer.slice(0, 4000) })))
       setAnswers(prev => [data, ...prev])
     } catch (error: unknown) {
+      setQuestion(q)
       showApiError(error, 'Query failed', `document-query-error-${doc.id}`)
     } finally {
       setAsking(false)
@@ -51,10 +59,10 @@ export default function DocumentViewer({ doc }: Props) {
         display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0
       }}>
         <div style={{ flex: 1 }}>
-          <h1 style={{ fontSize: '1rem', fontWeight: 600, color: '#f9fafb', margin: 0 }}>
+          <h1 style={{ overflowWrap: 'anywhere', fontSize: '1rem', fontWeight: 600, color: '#f9fafb', margin: 0 }}>
             {doc.original_filename || doc.filename}
           </h1>
-          <div style={{ display: 'flex', gap: '12px', marginTop: '4px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', marginTop: '4px' }}>
             <StatusPill status={doc.status} />
             {doc.chunk_count > 0 && <Meta label="Chunks" value={doc.chunk_count} />}
             {doc.token_count > 0 && <Meta label="Tokens" value={doc.token_count.toLocaleString()} />}
@@ -78,16 +86,19 @@ export default function DocumentViewer({ doc }: Props) {
         <div style={{ padding: '24px', color: '#ef4444' }}>
           <div style={{ fontWeight: 500 }}>Processing failed</div>
           <div style={{ fontSize: '0.82rem', marginTop: '4px', color: '#9ca3af' }}>{doc.error_message}</div>
+          <button onClick={() => retry.mutate()} disabled={retry.isPending} style={{ marginTop: '16px', padding: '10px 16px', background: '#6366f1', border: 0, borderRadius: '8px', color: '#fff', cursor: 'pointer' }}>
+            {retry.isPending ? 'Retrying…' : 'Retry processing'}
+          </button>
         </div>
       )}
 
       {/* Tabs */}
       {isReady && (
         <>
-          <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
             {([['overview', '📊 Overview'], ['entities', '🏷 Entities'], ['qa', '💬 Q&A'], ['history', '🕐 History']] as const).map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)} style={{
-                padding: '12px 20px', background: 'none', border: 'none',
+                padding: '12px 16px', whiteSpace: 'nowrap', background: 'none', border: 'none',
                 borderBottom: tab === t ? '2px solid #6366f1' : '2px solid transparent',
                 color: tab === t ? '#818cf8' : '#6b7280', cursor: 'pointer',
                 fontSize: '0.82rem', fontWeight: tab === t ? 600 : 400,
@@ -230,22 +241,24 @@ function QATab({ question, setQuestion, onAsk, asking, answers, docReady }: QATa
       <div style={{ display: 'flex', gap: '10px', marginBottom: '24px' }}>
         <input
           aria-label="Question about this document"
+          minLength={5}
+          maxLength={1000}
           value={question}
           onChange={e => setQuestion(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && onAsk()}
           placeholder="Ask anything about this document..."
           disabled={!docReady || asking}
           style={{
-            flex: 1, padding: '11px 16px',
+            flex: 1, minWidth: 0, padding: '11px 16px',
             background: '#1a1d27', border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '8px', color: '#fff', fontSize: '0.9rem', outline: 'none'
+            borderRadius: '8px', color: '#fff', fontSize: '1rem'
           }}
         />
-        <button onClick={onAsk} disabled={asking || !question.trim()} style={{
+        <button onClick={onAsk} disabled={asking || question.trim().length < 5} style={{
           padding: '11px 20px', borderRadius: '8px',
           background: asking ? 'rgba(99,102,241,0.4)' : '#6366f1',
           border: 'none', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem',
-          opacity: asking || !question.trim() ? 0.6 : 1
+          opacity: asking || question.trim().length < 5 ? 0.6 : 1
         }}>
           {asking ? '...' : 'Ask'}
         </button>
@@ -268,22 +281,23 @@ function QATab({ question, setQuestion, onAsk, asking, answers, docReady }: QATa
             {a.sources?.length > 0 && (
               <div>
                 <div style={{ fontSize: '0.65rem', fontFamily: 'monospace', color: '#4b5563', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                  Sources used ({a.sources.length} chunks · similarity ≥ {Math.min(...a.sources.map(s => s.similarity_score)).toFixed(2)})
+                  Retrieved evidence ({a.sources.length} passages)
                 </div>
-                {a.sources.slice(0, 3).map((s, j) => (
+                {a.sources.map((s, j) => (
                   <div key={j} style={{
                     padding: '8px 12px', marginBottom: '6px', borderRadius: '6px',
-                    background: 'rgba(255,255,255,0.03)', borderLeft: '2px solid rgba(99,102,241,0.4)',
+                    background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(99,102,241,0.4)',
+                    overflowWrap: 'anywhere', whiteSpace: 'pre-wrap',
                     fontSize: '0.78rem', color: '#9ca3af', lineHeight: 1.6
                   }}>
                     <span style={{ fontFamily: 'monospace', color: '#6366f1', marginRight: '8px' }}>
-                      [{j + 1}] {s.similarity_score.toFixed(2)}
+                      Source {j + 1}{s.page_number ? ` · Page ${s.page_number}` : ''}
                     </span>
                     {s.content}
                   </div>
                 ))}
                 <div style={{ fontSize: '0.65rem', color: '#374151', fontFamily: 'monospace', marginTop: '4px' }}>
-                  {a.tokens_used} tokens · {a.latency_ms}ms {a.from_cache && '· ⚡ cached'}
+                  {a.tokens_used} estimated tokens · {a.latency_ms}ms {a.from_cache && '· ⚡ cached'}
                 </div>
               </div>
             )}
@@ -315,7 +329,7 @@ function HistoryTab({ docId }: { docId: string }) {
           <div style={{ fontSize: '0.82rem', fontWeight: 500, color: '#c7d2fe', marginBottom: '6px' }}>{q.question}</div>
           <div style={{ fontSize: '0.8rem', color: '#9ca3af', lineHeight: 1.6 }}>{q.answer.substring(0, 200)}{q.answer.length > 200 ? '...' : ''}</div>
           <div style={{ fontSize: '0.65rem', color: '#374151', marginTop: '6px', fontFamily: 'monospace' }}>
-            {q.tokens_used} tokens · {q.latency_ms}ms {q.from_cache && '⚡'}
+            {q.tokens_used} estimated tokens · {q.latency_ms}ms {q.from_cache && '⚡'}
           </div>
         </div>
       ))}

@@ -9,6 +9,7 @@ Responsibilities:
 """
 import asyncio
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI, Request, status
@@ -24,6 +25,7 @@ from app.core.limiter import limiter
 from app.core.logging import configure_logging, get_logger
 from app.db.database import (
     check_database_health,
+    check_schema_health,
     close_db,
     init_db,
     retry_database_connection,
@@ -122,13 +124,36 @@ async def health():
 @app.get("/ready", tags=["Health"])
 async def ready():
     """Cloud Run readiness probe; traffic is accepted only with a working DB."""
-    return await health()
+    database_health = await health()
+    if isinstance(database_health, JSONResponse):
+        return database_health
+    if settings.ENVIRONMENT == "production" and not await check_schema_health():
+        return JSONResponse(status_code=503, content={"status": "degraded", "schema": "unavailable"})
+    if settings.ENVIRONMENT == "production" and settings.REDIS_URL:
+        from app.services.cache_service import get_redis
+        try:
+            cache = await get_redis()
+            if cache is None or not await asyncio.wait_for(cache.ping(), timeout=3):
+                raise ConnectionError("Shared cache unavailable")
+        except Exception:
+            return JSONResponse(status_code=503, content={"status": "degraded", "cache": "unreachable"})
+    return database_health
 
 
-@app.get("/", tags=["Root"])
 async def root():
     return {
         "name": settings.APP_NAME,
         "docs": "/api/docs",
         "health": "/health",
     }
+
+
+if settings.FRONTEND_DIST_DIR:
+    from app.core.spa import SPAStaticFiles
+
+    frontend_dir = Path(settings.FRONTEND_DIST_DIR).resolve()
+    if not (frontend_dir / "index.html").is_file():
+        raise RuntimeError("FRONTEND_DIST_DIR must contain a built index.html")
+    app.mount("/", SPAStaticFiles(directory=frontend_dir, html=True), name="frontend")
+else:
+    app.get("/", tags=["Root"])(root)

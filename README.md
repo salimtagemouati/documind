@@ -1,303 +1,155 @@
-# DocuMind — Production-Grade AI Document Intelligence & RAG SaaS
+# DocuMind — AI Document Intelligence
 
-> **Transform documents into structured intelligence.** A full-stack RAG application with PostgreSQL + pgvector (HNSW), batched LLM re-ranking, multi-provider routing, and an evaluation harness with explicit methodology limits.
+[![CI](https://github.com/salimtagemouati/documind/actions/workflows/ci.yml/badge.svg)](https://github.com/salimtagemouati/documind/actions/workflows/ci.yml)
 
-[![Production Frontend](https://img.shields.io/badge/Production-Live-61DAFB?style=for-the-badge&logo=vercel)](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app)
-[![Backend](https://img.shields.io/badge/Backend-Cloud_Run-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](docs/DEPLOYMENT.md)
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
-[![pgvector](https://img.shields.io/badge/pgvector-HNSW_Cosine-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
-[![LiteLLM](https://img.shields.io/badge/LiteLLM-Multi--Provider-purple?style=for-the-badge)](https://litellm.ai)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+Upload documents, inspect summaries and extracted entities, and ask questions with source citations. Built with React, TypeScript, FastAPI, SQLAlchemy and LiteLLM. PostgreSQL deployments support pgvector and hybrid lexical/vector retrieval; local development uses SQLite.
 
----
+## Try it locally
 
-## 🔗 Live Deployments & Public Demo
-
-| Service | Access Link | Notes |
-|:---|:---|:---|
-| 🌐 **Web App (Vercel)** | [documind-frontend.vercel.app](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app) | Production SPA with Interactive Benchmark Modal |
-| 🚀 **Public Demo Mode** | [Live Demo Access](https://documind-frontend-bsaovr054-storsterx89s-projects.vercel.app/demo) | Read-only recruiter demo with preloaded enterprise contracts |
-| ⚙️ **Backend deployment** | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Cloud Run deployment and cutover guide |
-| 💻 **Local development** | [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md) | SQLite quickstart and Supabase connection guidance |
-| 📊 **Evaluation Methodology** | [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) | Audit status, formulas, legacy artifact, and limitations |
-
----
-
-## 🧠 What is DocuMind?
-
-DocuMind is an enterprise-grade AI SaaS application built for **rigorous document interrogation**. Unlike standard naive RAG wrappers, DocuMind addresses the real engineering bottlenecks of retrieval systems:
-
-1. **Durable Vector Persistence**: Vector embeddings live in PostgreSQL with `pgvector` HNSW indexes. Application queries join documents and filter by authenticated owner.
-2. **Two-Stage Retrieval Pipeline**: Combines dense vector and PostgreSQL full-text candidates using RRF, then optionally applies one batched LLM relevance-scoring call.
-3. **Multi-Provider LLM Layer**: Standardized across LiteLLM to seamlessly route between Google Gemini, OpenAI, Anthropic, Groq, and local Ollama instances with zero vendor lock-in.
-4. **Adaptive Rate Limiting & Backoff**: Concurrency semaphores with regex-driven `SmartWait` backoff that respects provider quotas (e.g. Google AI Studio 429 retry-after windows).
-5. **Multi-Document Cross-Querying**: Unified retrieval across multiple workspace documents simultaneously with per-source citation badges and chunk-level provenance.
-6. **Evaluation Harness**: Automated in-memory comparisons for Precision@K, Recall@K, keyword-based MRR, lexical groundedness, and phrase-based refusal detection.
-
----
-
-## 📊 RAG evaluation status
-
-The repository contains a 15-case historical artifact, but the audit invalidated its aggregate values after correcting the Precision@K denominator. The stored 33.3% refusal accuracy also contradicts any claim of reliable abstention. See [`docs/EVALUATION_REPORT.md`](docs/EVALUATION_REPORT.md) for the formulas, limitations, and legacy values.
-
-The harness is in-memory only: it compares dense retrieval with a larger dense candidate pool plus LLM reranking. It does not exercise pgvector, HNSW, PostgreSQL FTS, RRF, tenant filters, or multi-document balancing.
+Requires **Python 3.11+** and **Node.js 22.12+**. Run these commands from a clone of this repository:
 
 ```bash
-cd backend
-python -m app.eval.runner --cases 3
-python -m app.eval.runner
-```
-
----
-
-## 🏗️ System Architecture
-
-```mermaid
-graph TD
-    subgraph Client["Frontend (React 18 + TS + Vite)"]
-        UI[Document Viewer & Chat UI]
-        MDV[MultiDocViewer / Cross-Query]
-        MODAL[EvalModal / Live Benchmark Viewer]
-        DEMO[Demo Mode Controller]
-    end
-
-    subgraph API["FastAPI Backend Gateway (Cloud Run)"]
-        ROUTER[API Router / SlowAPI Rate Limiting]
-        AUTH[JWT Auth + Demo Guardrails]
-        LIMITER[LLM Limiter & SmartWait Backoff]
-    end
-
-    subgraph Retrieval["RAG Engine (app/services)"]
-        PROC[Document Processor & Chunking]
-        EMB[Matryoshka Embedding 768d]
-        VECTOR[pgvector Cosine Search]
-        FTS[PostgreSQL Full-Text Search]
-        RRF[Reciprocal Rank Fusion k=60]
-        RERANK[Batched LLM Reranker]
-        EVIDENCE[Balanced Evidence Selection]
-        SYNTH[Single / Multi-Document Synthesis]
-        ANSWER[Cited Grounded Answer]
-    end
-
-    subgraph Storage["Persistent Data Tier (Supabase)"]
-        PG[(PostgreSQL + pgvector HNSW)]
-        CHUNKS[(document_chunks table)]
-        STORE[(Supabase Storage Bucket)]
-        REDIS[(Redis Query Cache)]
-    end
-
-    subgraph Providers["Multi-Provider AI Gateway (LiteLLM)"]
-        GEMINI[Google Gemini 3.5 Flash Lite]
-        OPENAI[OpenAI / GPT-4o Optional]
-        ANTHROPIC[Anthropic Claude Optional]
-        GROQ[Groq Optional]
-        OLLAMA[Local Ollama Optional]
-    end
-
-    subgraph Evaluation["Evaluation Harness"]
-        METRICS[Precision / Recall / MRR / Groundedness / Refusal]
-        REPORT[Stored Benchmark Report]
-    end
-
-    UI -->|HTTPS / JWT| ROUTER
-    DEMO -->|Guest Token| ROUTER
-    ROUTER --> AUTH
-    AUTH --> PROC
-    AUTH --> VECTOR
-    AUTH --> FTS
-
-    PROC -->|Upload PDF/DOCX/TXT| STORE
-    PROC -->|800t Chunking + Overlap| EMB
-    EMB -->|Matryoshka 768d + L2 Norm| CHUNKS
-
-    VECTOR -->|Cosine Similarity = 1 - distance| PG
-    FTS -->|Bound tsquery parameters| PG
-    VECTOR --> RRF
-    FTS --> RRF
-    RRF --> RERANK
-    RERANK --> EVIDENCE
-    EVIDENCE --> SYNTH
-    SYNTH --> ANSWER
-    RERANK -->|Score Candidates 1..10| LIMITER
-    LIMITER --> GEMINI
-    LIMITER --> OPENAI
-    LIMITER --> ANTHROPIC
-    LIMITER --> GROQ
-    LIMITER --> OLLAMA
-    VECTOR -->|Cache Hit| REDIS
-    ANSWER --> METRICS
-    METRICS --> REPORT
-    REPORT --> MODAL
-```
-
----
-
-## 🔬 Two-Stage Retrieval & Re-ranking Pipeline
-
-```mermaid
-flowchart LR
-    A["User Query"] --> B["gemini-embedding-001\n(Matryoshka 768d + L2 Norm)"]
-    B --> C["pgvector HNSW\n(Cosine Similarity)"]
-    A --> D["PostgreSQL Full-Text Search"]
-    C --> E["RRF Fusion k=60"]
-    D --> E
-    E -->|Candidate Pool| F["Batched LLM Relevance Scoring"]
-    F --> G["Balanced Evidence Selection\n(Provenance & Source Citations)"]
-    G --> H["LiteLLM Answer Generation"]
-    H --> I["Cited Response with Metadata"]
-```
-
-### Engineering Decisions:
-- **HNSW over IVFFlat**: HNSW supports incremental inserts without a separate index-training step and matches the online ingestion workflow.
-- **Matryoshka Dimensionality Reduction (768d)**: The configured embedding output and PostgreSQL vector column both use 768 dimensions.
-- **Strict Unit Normalization**: Embeddings are \(L_2\) normalized on creation, enabling Euclidean distance, cosine distance, and inner product to be mathematically monotonic.
-
----
-
-## ✨ Core Features
-
-| Feature | Description |
-|:---|:---|
-| 🔍 **Two-Stage RAG Q&A** | Hybrid RRF candidate retrieval + batched LLM relevance scoring with inline citations |
-| 📚 **Multi-Document Querying** | Query multiple documents simultaneously across a workspace (`document_ids: [...]`) with per-source attribution |
-| 🛡️ **Tenant-filtered retrieval** | Every dense and lexical retrieval query joins the document owner and filters by authenticated user ID |
-| 🎭 **Instant Public Demo Mode** | Short-lived demo tokens, read-only UI/API writes, per-IP query limits, and seeded documents |
-| 📈 **In-App Benchmark Viewer** | Displays stored results and warns when an artifact predates the current methodology |
-| 📝 **Document Summarization** | Hierarchical map-reduce summarization handles large multi-page files |
-| 🏷️ **Entity & Theme Extraction** | Automatic extraction of people, organizations, dates, and domain entities |
-| ⚡ **Redis Cache Layer** | Exact-query cache with 1h TTL reuses answers without another provider call |
-| 💳 **Optional Stripe Billing** | Tiered usage limits and Stripe webhooks activate only when server billing variables are configured |
-
----
-
-## 💻 Tech Stack
-
-### Frontend
-- **Framework**: React 18 with TypeScript 5
-- **Build Tool**: Vite 5
-- **Styling**: component-scoped inline styles and shared CSS, with Lucide Icons available
-- **State & Data**: Zustand + TanStack React Query v5
-- **Notifications**: React Hot Toast
-
-### Backend
-- **Framework**: FastAPI (Python 3.11+)
-- **ORM & Database**: SQLAlchemy 2.0 (AsyncIO) with `asyncpg`
-- **Vector Database**: PostgreSQL with `pgvector` (HNSW indexing)
-- **AI Gateway**: LiteLLM (Multi-provider abstraction for Gemini, OpenAI, Anthropic, Ollama)
-- **Primary LLM**: Google Gemini 3.5 Flash Lite (`gemini/gemini-3.5-flash-lite`)
-- **Primary Embeddings**: Google Gemini Embedding 001 (`gemini/gemini-embedding-001`, 768d)
-- **Resilience**: Tenacity with regex-based `SmartWait` backoff + SlowAPI rate limiting
-- **Cache**: Redis 7
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Python 3.11+ and Node.js 20+
-- A provider API key is needed only for AI generation in local SQLite mode
-- A [Supabase Project](https://supabase.com/) with pgvector is required for production retrieval
-
-### Local Setup (Without Docker)
-
-#### 1. Backend
-```bash
+python3 scripts/setup_local.py
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-cp .env.example .env
-# Replace SECRET_KEY. Add provider credentials only when testing AI generation.
-# The default DATABASE_URL creates backend/dev.db automatically.
-
-# Start backend server
 uvicorn app.main:app --reload --port 8000
 ```
 
-#### 2. Frontend
+In a second terminal, from the repository root:
+
 ```bash
 cd frontend
-npm install
-cp .env.example .env
+npm ci
 npm run dev
 ```
 
-App runs at `http://localhost:5173`, API docs at `http://localhost:8000/api/docs`.
-See [`docs/LOCAL_DEV.md`](docs/LOCAL_DEV.md) for SQLite smoke checks, Vite preview, and Supabase pooler configuration.
+Open **http://localhost:5173/demo** to explore three seeded sample documents without creating an account. The setup script generates a random signing secret and preserves existing `.env` files.
 
-### Full-Stack Docker Setup
+| Capability | Local requirements |
+| --- | --- |
+| Landing page, registration, sign-in, demo analyses, document listing | No external services or provider credentials |
+| Upload and store PDF, DOCX, TXT or Markdown files | Local SQLite and private disk storage, created automatically |
+| Generate summaries, entities, sentiment and answers | A valid credential and model for your chosen AI provider |
+| Semantic retrieval, PostgreSQL full-text search and RRF | PostgreSQL with pgvector, migrations and embedding credentials |
+| Shared cache and progress events across workers | Redis; local single-process mode works without it |
+| Paid subscriptions | Optional Stripe configuration; disabled by default |
+
+For AI generation, edit `backend/.env` and set `GOOGLE_API_KEY` with a model your account can access, or configure another LiteLLM provider using `LLM_MODEL` and its corresponding key. Never commit credentials. Uploaded documents fail visibly if all AI analysis calls fail; the app does not manufacture analysis results.
+
+The sample analyses are pre-authored fixtures. Demo questions call the configured provider; they are not canned answers. SQLite retrieval is lexical and does not validate the production vector-search path.
+
+## Verification status — October 2026
+
+A complete live Gemini Flash Lite + PostgreSQL/pgvector run passed PDF, Markdown, adversarial TXT and DOCX table uploads, analysis, cited answers, follow-up, refusal, multi-document synthesis, caching and deletion. Earlier quota/timeout failures are preserved in dated artifacts; see the [latest passing raw run](docs/live_gemini_results.json) and [audit](docs/ENGINEERING_AUDIT.md).
+
+Six reproducible synthetic retrieval fixtures retained 6/6 retrieval hits while supporting-page accuracy improved from 0/6 to 6/6. This is a provenance measurement, not a general factuality benchmark. Optional reranking is disabled by default pending representative evidence. Analysis combines summary, entities, sentiment and keywords into one validated generation call.
+
+```sh
+backend/.venv/bin/python scripts/evaluate_local.py
+# Requires local Docker; no provider credentials:
+backend/.venv/bin/python scripts/check_pgvector.py
+# Explicit live test: sends synthetic documents to Gemini using backend/.env:
+backend/.venv/bin/python scripts/live_gemini_smoke.py
+```
+
+PDF physical pages and DOCX tables are preserved. Sources include full retrieved passages. Single-document chat accepts up to three bounded prior turns. Scanned PDFs need OCR before upload. Ingestion is currently in-process and not durable across restarts; see release blockers in the audit.
+
+Launch instructions: [GO_LIVE.md](docs/GO_LIVE.md). Current checks: 118 backend tests (61.55% coverage) and 7 frontend tests pass. Permanent cloud hosting remains unconfigured.
+
+## Hosted demo status
+
+An account-free temporary HTTPS preview can run the complete application on this Mac. It uses the existing backend credential, a separate persistent Docker PostgreSQL database, private local uploads and a built frontend served by FastAPI. Run `backend/.venv/bin/python scripts/preview.py start --share`, then `backend/.venv/bin/python scripts/preview.py status` for the current URL. Docker, installed dependencies and `cloudflared` must be available. The Mac must stay awake and connected; the URL changes after restart. This is a live preview, not permanent cloud hosting. See [preview operations](docs/GO_LIVE.md).
+
+On macOS, an optional login service restarts the preview after exit and at login:
+
+```sh
+backend/.venv/bin/python scripts/preview_service.py install
+backend/.venv/bin/python scripts/preview_service.py status
+# Stop the service and preserve its database/uploads:
+backend/.venv/bin/python scripts/preview_service.py remove
+```
+
+Docker must remain running. To verify a shared preview with synthetic uploads and real provider calls, run `backend/.venv/bin/python scripts/check_preview.py`. The public URL is temporary, so it is intentionally not advertised as a permanent deployment link.
+
+## Docker
+
 ```bash
+python3 scripts/setup_local.py
 docker compose up --build
 ```
 
----
+Open http://localhost:5173. Compose runs the API, Vite and Redis, with a persistent `api_data` volume for SQLite and uploaded originals. This is a local development stack. `docker compose down` retains data; removing volumes erases it. The hosted design uses PostgreSQL and Supabase Storage. `STORAGE_BACKEND=local` also supports PostgreSQL with persistent private disk storage for local integration testing.
 
-## 🧪 Running the Test & Benchmark Suite
+## Main workflows
 
-### Backend unit and integration tests
+- **Document processing:** validate size/type, store the original, extract text, chunk, index, then generate analysis in background.
+- **Document Q&A:** retrieve owner-filtered evidence, optionally rerank, generate a cited answer, and retain history for registered users.
+- **Cross-document Q&A:** select multiple documents and retrieve balanced evidence across them.
+- **Public demo:** three fictional sample documents, read-only access and per-IP query limits.
+- **Quality panel:** inspect the historical evaluation artifact with an explicit methodology warning.
+
+```mermaid
+flowchart LR
+    UI[React / TypeScript] --> API[FastAPI / JWT]
+    API --> DB[(SQLite locally / PostgreSQL in production)]
+    API --> Files[Local disk / Supabase Storage]
+    API --> Retrieval[Lexical locally / pgvector + FTS + RRF]
+    Retrieval --> Rerank[Optional LLM reranking]
+    Rerank --> LLM[LiteLLM provider]
+    LLM --> Answer[Answer and source citations]
+```
+
+PostgreSQL embeddings use 768 dimensions and a cosine HNSW index. Tenant checks are performed by the API and retrieval queries. Access tokens are checked against current database accounts, and the shared demo identity cannot use ordinary password login or write operations.
+
+## Verify the project
+
 ```bash
 cd backend
-pytest tests/ -q --cov=app --cov-report=term-missing
+source .venv/bin/activate
+ruff check app tests
+mypy app/services/rag_service.py app/services/rerank_service.py app/services/ai_service.py --follow-imports=skip --ignore-missing-imports
+pytest tests -q --cov=app --cov-report=term-missing --cov-fail-under=60
+python ../scripts/smoke_test.py
+
+cd ../frontend
+npm ci
+npm run lint
+npm test
+npm run build
 ```
 
-### Full 15-Case Empirical Evaluation Harness
+The smoke test starts a real API process against disposable SQLite, without reading your `.env`. It checks readiness, demo seeding, analysis responses, write protection, registration and tenant isolation. Unit/integration tests mock AI and Supabase calls; passing them does not establish live provider or hosted deployment health.
+
+GitHub Actions runs backend lint/type checks/tests, the process smoke test, local provenance evaluation, disposable PostgreSQL integration, frontend lint/build and a backend Docker build.
+
+## Evaluation limitations
+
+The historical 15-case artifact predates a corrected Precision@K formula, so its aggregate values must not be presented as validated results. The harness compares in-memory dense retrieval with dense retrieval plus reranking. It does not test PostgreSQL, HNSW, FTS, RRF, tenant isolation or multi-document balancing. Groundedness uses lexical overlap, not an independent factuality judge.
+
+To rerun with working provider credentials:
+
 ```bash
 cd backend
-
-# In-memory evaluation; provider credentials are required
-python -m app.eval.runner
+python -m app.eval.runner --cases 3
 ```
 
-Outputs a formatted ASCII comparison table, writes `docs/EVALUATION_REPORT.md`, and updates the runtime and documentation copies of `benchmark_report.json`.
+See [evaluation methodology](docs/EVALUATION_REPORT.md) for formulas and limitations.
 
----
+## Project layout
 
-## 📁 Repository Layout
-
-```
-documind/
-├── .github/workflows/
-│   └── ci.yml                 # Automated backend test, lint & frontend build
-├── backend/
-│   ├── app/
-│   │   ├── api/routes/        # Auth, documents, query, analytics, demo, billing
-│   │   ├── core/              # Config, security, rate limiter, logging
-│   │   ├── db/                # Database connection, init, pgvector setup
-│   │   ├── eval/              # Scientific benchmark harness, dataset, evaluator, runner
-│   │   ├── models/            # SQLAlchemy models (User, Document, DocumentChunk)
-│   │   ├── schemas/           # Pydantic v2 schemas
-│   │   ├── services/          # RAG engine, LiteLLM client, document processor, demo service
-│   │   └── main.py            # FastAPI entrypoint
-│   ├── tests/                 # Pytest unit and integration tests
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── src/
-│   │   ├── components/        # EvalModal, MultiDocViewer, DocumentChat, etc.
-│   │   ├── pages/             # LandingPage, DashboardPage, DemoPage, etc.
-│   │   └── lib/               # Axios API client, auth utilities
-│   ├── package.json
-│   └── vite.config.ts
-├── docs/
-│   ├── EVALUATION_REPORT.md   # Ground-truth benchmark report with real numbers
-│   └── benchmark_report.json  # Raw evaluation dataset & metrics
-└── docker-compose.yml
+```text
+backend/app/       API routes, authentication, models and RAG services
+backend/tests/     Unit and integration tests
+backend/migrations/ PostgreSQL billing and pgvector migrations
+frontend/src/      React pages, dashboard components, API client and auth store
+scripts/           Local setup, process smoke test, SQL schema and deployment helper
+docs/              Local development, deployment and evaluation notes
 ```
 
----
+More detail: [architecture](docs/ARCHITECTURE.md), [engineering audit](docs/ENGINEERING_AUDIT.md), [interview showcase](docs/PROJECT_SHOWCASE.md), [local development](docs/LOCAL_DEV.md), and [deployment](docs/DEPLOYMENT.md).
 
-## ⚖️ License
+## License
 
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
-
----
-
-## 👤 Author
-
-**Salim Taghzouti** — Full-Stack AI Engineer  
-[![GitHub](https://img.shields.io/badge/GitHub-@SalimTag-181717?logo=github)](https://github.com/SalimTag)
-[![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-0A66C2?logo=linkedin)](https://linkedin.com/in/salim)
+[MIT](LICENSE).

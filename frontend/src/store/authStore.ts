@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { authApi } from '../services/api'
+import { queryClient } from '../services/queryClient'
 
 interface User {
   id: string
@@ -38,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
           localStorage.setItem('access_token', data.access_token)
           localStorage.setItem('refresh_token', data.refresh_token)
           const { data: user } = await authApi.me()
+          queryClient.clear()
           set({ user, isAuthenticated: true, isLoading: false })
         } catch (err) {
           set({ isLoading: false })
@@ -52,6 +54,7 @@ export const useAuthStore = create<AuthState>()(
           localStorage.setItem('access_token', data.access_token)
           localStorage.setItem('refresh_token', data.refresh_token)
           const { data: user } = await authApi.me()
+          queryClient.clear()
           set({ user, isAuthenticated: true, isLoading: false })
         } catch (err) {
           set({ isLoading: false })
@@ -66,6 +69,7 @@ export const useAuthStore = create<AuthState>()(
           localStorage.setItem('access_token', data.access_token)
           localStorage.setItem('refresh_token', data.refresh_token)
           const { data: user } = await authApi.me()
+          queryClient.clear()
           set({ user, isAuthenticated: true, isLoading: false })
         } catch (err) {
           set({ isLoading: false })
@@ -74,6 +78,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        queryClient.clear()
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         set({ user: null, isAuthenticated: false })

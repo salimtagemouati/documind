@@ -17,6 +17,7 @@ import litellm
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.services.llm_limiter import call_with_limits
+from app.services.model_options import sampling_options
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -88,7 +89,7 @@ Return ONLY a valid JSON array of objects with "id" (integer) and "score" (float
         kwargs = {
             "model": settings.LLM_MODEL,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0,
+            **sampling_options(settings.LLM_MODEL, 0.0),
             "max_tokens": 400,
         }
         google_key = settings.GOOGLE_API_KEY or os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")

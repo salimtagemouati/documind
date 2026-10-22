@@ -197,7 +197,9 @@ async def test_rerank_chunks_fallback_on_invalid_json():
 
 
 @pytest.mark.asyncio
-async def test_rerank_chunks_with_fences_and_commentary():
+async def test_rerank_chunks_with_fences_and_commentary(monkeypatch):
+    from app.services.rerank_service import settings
+    monkeypatch.setattr(settings, "ENABLE_RERANKING", True)
     """Verify robust extraction when JSON array is wrapped in markdown code blocks or commentary."""
     from unittest.mock import MagicMock, patch
 
@@ -221,7 +223,9 @@ async def test_rerank_chunks_with_fences_and_commentary():
 
 
 @pytest.mark.asyncio
-async def test_rerank_prompt_treats_document_passages_as_untrusted_data():
+async def test_rerank_prompt_treats_document_passages_as_untrusted_data(monkeypatch):
+    from app.services.rerank_service import settings
+    monkeypatch.setattr(settings, "ENABLE_RERANKING", True)
     from unittest.mock import MagicMock, patch
 
     from app.services.rerank_service import rerank_chunks

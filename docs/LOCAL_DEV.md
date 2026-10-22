@@ -12,14 +12,14 @@ Never commit `backend/.env` or `frontend/.env`. The repository ignores both file
 From the repository root:
 
 ```bash
+python3 scripts/setup_local.py
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
 ```
 
-Replace `SECRET_KEY=REPLACE_ME` with a local random value. The Supabase placeholders may remain unchanged while testing local health, authentication, the seeded demo, and document listing. A provider credential is required only for AI generation.
+The setup script generates a random `SECRET_KEY` when creating a new environment file and preserves existing files. The Supabase placeholders may remain unchanged while testing local health, authentication, the seeded demo, and document listing. A provider credential is required only for AI generation. Local uploads store originals under `backend/data/uploads` (configurable with `LOCAL_UPLOAD_DIR`). No Supabase storage is contacted in SQLite mode. AI analysis failures are surfaced as failed documents.
 
 Start the API:
 
@@ -42,12 +42,13 @@ In a second terminal:
 
 ```bash
 cd frontend
-npm install
-cp .env.example .env
+npm ci
 npm run dev
 ```
 
 Open `http://localhost:5173`. An empty `VITE_API_URL` uses the Vite development proxies for `/api` and `/health`.
+
+Rebuild after changing `VITE_API_URL`, since Vite embeds it at build time.
 
 `npm run preview` normally listens on `http://127.0.0.1:4173` and does not use the development proxy. For preview, set:
 
@@ -100,3 +101,19 @@ Manual checks:
 2. Start the backend and retry; the demo should open with seeded documents.
 3. Stop and restart the backend to exercise the frontend cold-start message.
 4. In demo mode, confirm upload and delete operations remain forbidden.
+
+
+## Real retrieval and provider verification
+
+From the repository root, use `backend/.venv/bin/python scripts/check_pgvector.py`
+for a disposable local PostgreSQL check, or `backend/.venv/bin/python scripts/live_gemini_smoke.py`
+for an explicit Gemini-backed run. The latter sends a synthetic PDF; add `--extended` for Markdown, TXT
+and DOCX fixtures to the configured provider and consumes its quota. Read the
+result artifact's status; a partial failed run is not complete format coverage.
+
+`STORAGE_BACKEND=local` supports local PostgreSQL without hosted Storage credentials.
+`auto` retains SQLite/disk and PostgreSQL/Supabase behavior. Keep `EMBEDDING_DIM=768`
+unless you also migrate the database vector schema. `ENABLE_RERANKING=false` is
+the default pending representative measurements. `DOCUMENT_PROCESSING_TIMEOUT_SECONDS`
+defaults to 120; timed-out jobs are marked failed. Provider daily-quota failures
+are not retried repeatedly. Never place provider credentials in a `VITE_` variable.

@@ -100,7 +100,7 @@ api.interceptors.response.use(
   (res: AxiosResponse) => res,
   async (error) => {
     const original = error.config
-    if (error.response?.status === 401 && !original._retry) {
+    if (error.response?.status === 401 && original && !original._retry && !/^\/auth\/(login|register|refresh|demo)$/.test(original.url ?? '')) {
       original._retry = true
       const refresh = localStorage.getItem('refresh_token')
       if (refresh) {
@@ -111,7 +111,9 @@ api.interceptors.response.use(
           original.headers.Authorization = `Bearer ${data.access_token}`
           return api(original)
         } catch {
-          localStorage.clear()
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+          localStorage.removeItem('auth-storage')
           window.location.href = '/login'
         }
       }
@@ -151,6 +153,8 @@ export const documentsApi = {
 
   get: (id: string) => api.get(`/documents/${id}`),
 
+  retry: (id: string) => api.post(`/documents/${id}/retry`),
+
   getAnalysis: (id: string) => api.get(`/documents/${id}/analysis`),
 
   delete: (id: string) => api.delete(`/documents/${id}`),
@@ -158,11 +162,11 @@ export const documentsApi = {
 
 // ─── Query / RAG ──────────────────────────────────────────────────────────────
 export const queryApi = {
-  ask: (documentId: string, question: string, maxTokens = 800) =>
-    api.post('/query/', { document_id: documentId, question, max_tokens: maxTokens }),
+  ask: (documentId: string, question: string, maxTokens = 800, history: { question: string; answer: string }[] = []) =>
+    api.post('/query/', { document_id: documentId, question, max_tokens: maxTokens, history }, { timeout: 120000 }),
 
   askMulti: (documentIds: string[], question: string, maxTokens = 1000) =>
-    api.post('/query/multi', { document_ids: documentIds, question, max_tokens: maxTokens }),
+    api.post('/query/multi', { document_ids: documentIds, question, max_tokens: maxTokens }, { timeout: 120000 }),
 
   history: (documentId?: string, page = 1) =>
     api.get('/query/history', { params: { document_id: documentId, page } }),

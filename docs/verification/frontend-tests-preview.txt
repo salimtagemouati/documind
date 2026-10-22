@@ -1,0 +1,13 @@
+
+> documind-frontend@1.0.0 test
+> vitest run
+
+
+ RUN  v5.0.5 /Users/salim/Developer/documind/frontend
+
+
+ Test Files  3 passed (3)
+      Tests  7 passed (7)
+   Start at  02:11:20
+   Duration  774ms (environment 68%, tests 15%, setup 13%, import 2%, transform 2%)
+

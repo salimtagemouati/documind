@@ -39,7 +39,7 @@ def test_cloud_run_validation_accepts_production_shaped_values():
         "SUPABASE_SERVICE_KEY": "service-value",
         "DATABASE_URL": "postgresql+asyncpg://user:password@db.pooler.supabase.com:5432/postgres",
         "GOOGLE_API_KEY": "provider-value",
-        "ALLOWED_ORIGINS": "https://app.documind.dev,http://localhost:5173",
+        "ALLOWED_ORIGINS": "https://app.documind.dev",
         "FRONTEND_URL": "https://app.documind.dev",
         "REDIS_URL": "rediss://cache.internal.net:6379/0",
     }
@@ -58,6 +58,23 @@ def test_cloud_run_validation_rejects_database_template_host():
         "GOOGLE_API_KEY": "provider-value",
         "ALLOWED_ORIGINS": "https://app.documind.dev",
         "FRONTEND_URL": "https://app.documind.dev",
+        "REDIS_URL": "rediss://cache.internal.net:6379/0",
     }
 
     assert deploy.invalid_configuration_keys(values) == ["DATABASE_URL"]
+
+
+def test_deployment_preserves_tested_models_and_disables_debug():
+    deploy = _load_deploy_module()
+    environment = deploy.build_environment({"LLM_MODEL": "gemini/test-model", "ENABLE_RERANKING": "false", "DEBUG": "true"})
+    assert environment["LLM_MODEL"] == "gemini/test-model"
+    assert environment["ENABLE_RERANKING"] == "false"
+    assert environment["DEBUG"] == "false"
+    assert environment["STORAGE_BACKEND"] == "supabase"
+
+
+def test_deployment_rejects_local_storage_and_invalid_origins():
+    deploy = _load_deploy_module()
+    invalid = deploy.invalid_configuration_keys({"STORAGE_BACKEND": "local", "ALLOWED_ORIGINS": '["https://app.example.com", "http://localhost:5173"]'})
+    assert "STORAGE_BACKEND" in invalid
+    assert "ALLOWED_ORIGINS" in invalid

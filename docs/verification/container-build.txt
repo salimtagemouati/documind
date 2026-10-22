@@ -1,0 +1,56 @@
+#0 building with "orbstack" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.71kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.11-slim
+#2 DONE 0.5s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 210B done
+#3 DONE 0.0s
+
+#4 [builder 1/5] FROM docker.io/library/python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+#4 resolve docker.io/library/python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce 0.0s done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 57.53kB done
+#5 DONE 0.0s
+
+#6 [builder 5/5] RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+#6 CACHED
+
+#7 [builder 2/5] WORKDIR /app
+#7 CACHED
+
+#8 [builder 3/5] RUN apt-get update && apt-get install -y --no-install-recommends     build-essential     libpq-dev     && rm -rf /var/lib/apt/lists/*
+#8 CACHED
+
+#9 [runtime 3/6] RUN apt-get update && apt-get install -y --no-install-recommends     libpq5 curl     && rm -rf /var/lib/apt/lists/*
+#9 CACHED
+
+#10 [builder 4/5] COPY requirements.txt .
+#10 CACHED
+
+#11 [runtime 4/6] COPY --from=builder /install /usr/local
+#11 CACHED
+
+#12 [runtime 5/6] COPY app/ ./app/
+#12 DONE 0.0s
+
+#13 [runtime 6/6] RUN useradd -m -u 1001 documind && mkdir -p /app/data/uploads && chown -R documind:documind /app
+#13 DONE 0.1s
+
+#14 exporting to image
+#14 exporting layers 0.1s done
+#14 exporting manifest sha256:030d4c9a920aac80731b2472f6372a323d74751e487c3a5f1fa0752b674e4541
+#14 exporting manifest sha256:030d4c9a920aac80731b2472f6372a323d74751e487c3a5f1fa0752b674e4541 done
+#14 exporting config sha256:f92115d7946755deb55f399a303ea03ede0e1bc9940a3f86471f41778fd3e826 done
+#14 exporting attestation manifest sha256:9da87bb09d96dd83d5809cbe0cb787514519d3a0ad049d38496a50e949a84be7 done
+#14 exporting manifest list sha256:44f872c8d03d15197924f760cd8f5f0fe2b69ce38822f30ac87738b829315c08 done
+#14 naming to docker.io/library/documind-audit:local done
+#14 unpacking to docker.io/library/documind-audit:local
+#14 unpacking to docker.io/library/documind-audit:local 3.2s done
+#14 DONE 3.3s

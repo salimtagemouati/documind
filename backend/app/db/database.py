@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, Generator
 from contextlib import suppress
 
 from fastapi import HTTPException, status
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -207,3 +207,16 @@ async def close_db() -> None:
     """Called at app shutdown — disposes the connection pool cleanly."""
     await engine.dispose()
     logger.info("database_pool_closed")
+
+
+async def check_schema_health() -> bool:
+    """Check the columns used by the API without reading user rows."""
+    from app.models.models import Document, DocumentChunk, QueryHistory, User
+    try:
+        async with engine.connect() as connection:
+            for model in (User, Document, DocumentChunk, QueryHistory):
+                await connection.execute(select(model).limit(0))
+        return True
+    except Exception as exc:
+        logger.warning("database_schema_unavailable", error_type=type(exc).__name__)
+        return False

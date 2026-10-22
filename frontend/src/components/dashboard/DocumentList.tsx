@@ -152,12 +152,13 @@ export default function DocumentList({
             )}
             <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
               <div style={{ flex: 1, overflow: 'hidden' }}>
-                <div style={{
+                <button type="button" onClick={(event) => { event.stopPropagation(); onSelect(doc.id) }} style={{
+                  width: '100%', textAlign: 'left', border: 0, background: 'none', cursor: 'pointer',
                   fontSize: '0.82rem', fontWeight: 500, color: '#e5e7eb',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
                 }}>
                   {doc.original_filename || doc.filename}
-                </div>
+                </button>
                 <div style={{ display: 'flex', gap: '8px', marginTop: '4px', alignItems: 'center' }}>
                   <span style={{
                     fontSize: '0.62rem', fontFamily: 'monospace',

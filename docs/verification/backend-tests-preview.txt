@@ -1,0 +1,48 @@
+........................................................................ [ 61%]
+..............................................                           [100%]
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.13.16-final-0 _______________
+
+Name                                 Stmts   Miss  Cover   Missing
+------------------------------------------------------------------
+app/__init__.py                          0      0   100%
+app/api/__init__.py                      0      0   100%
+app/api/routes/__init__.py               0      0   100%
+app/api/routes/analytics.py             51     24    53%   45-52, 64-86, 101-123
+app/api/routes/auth.py                  74     38    49%   45-63, 75-94, 111-122, 134, 138-152, 167-172
+app/api/routes/billing.py               52     29    44%   49-63, 76-89, 101-108, 122-136
+app/api/routes/documents.py            242     83    66%   86-87, 111-112, 135-136, 173-180, 187, 190, 194, 232-233, 241-260, 276-283, 306-313, 316-318, 323-325, 329-331, 345-361, 379, 392-401, 434-444, 454-464, 471-477, 485
+app/api/routes/query.py                127     95    25%   64-170, 196-285, 297-320
+app/api/routes/ws.py                    91     77    15%   53-185
+app/core/__init__.py                     0      0   100%
+app/core/config.py                      83      7    92%   45-51
+app/core/limiter.py                     16      3    81%   15, 22-23
+app/core/logging.py                     31      2    94%   42, 69
+app/core/security.py                    59     14    76%   37-38, 88, 90-91, 109, 114-119, 135-140
+app/core/spa.py                         14      0   100%
+app/db/__init__.py                       0      0   100%
+app/db/database.py                     128     59    54%   23-24, 47-50, 98-104, 106-114, 125-130, 136-141, 168-174, 179-187, 192-203, 214-222
+app/eval/dataset.py                      1      0   100%
+app/eval/evaluator.py                  177    148    16%   50-55, 62-95, 103-117, 120-129, 132-146, 150-154, 160-392
+app/eval/metrics.py                     58     27    53%   24, 28, 46, 50-52, 60, 62, 68, 99-124
+app/main.py                             83     13    84%   41, 94-95, 129, 136-137, 140, 144, 152-157
+app/models/__init__.py                   0      0   100%
+app/models/models.py                   117      1    99%   34
+app/schemas/__init__.py                  0      0   100%
+app/schemas/schemas.py                 223      2    99%   26, 28
+app/services/__init__.py                 0      0   100%
+app/services/ai_service.py             191     55    71%   68-73, 98-105, 143-147, 208-209, 297, 312-317, 406-502, 539, 543-545, 555
+app/services/cache_service.py          115     37    68%   33-34, 53-54, 56, 65, 77, 98-99, 114-115, 121-129, 133-141, 154-155, 159, 164-177
+app/services/demo_service.py            39     24    38%   179-209, 230-239
+app/services/document_processor.py     121     12    90%   35, 37, 51-53, 90, 99, 133, 144, 154, 188, 195
+app/services/llm_limiter.py             78     13    83%   47-48, 53-54, 82, 95-102
+app/services/model_options.py            6      0   100%
+app/services/progress_service.py        84     65    23%   41-52, 76-83, 87-91, 100-153
+app/services/rag_service.py            163     56    66%   54, 76-77, 83-85, 112-113, 118-120, 123, 138-139, 144-146, 211, 257, 268-384
+app/services/rerank_service.py          63     11    83%   31, 52, 64, 99-100, 128-138
+app/services/stripe_service.py         158    122    23%   31-32, 44-83, 95-119, 127-138, 163-175, 183, 197, 201, 217-227, 236-247, 253-280, 290-306, 311-325, 330-342
+app/utils/__init__.py                    0      0   100%
+------------------------------------------------------------------
+TOTAL                                 2645   1017    62%
+Required test coverage of 60% reached. Total coverage: 61.55%
+118 passed in 11.36s

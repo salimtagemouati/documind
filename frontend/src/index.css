@@ -41,3 +41,12 @@ body { font-family: 'Spline Sans', 'Avenir Next', -apple-system, BlinkMacSystemF
   }
   .dashboard-sidebar.is-open { transform: translateX(0); }
 }
+
+@media (max-width: 760px) {
+  .dashboard-nav { height: auto !important; min-height: 56px; flex-wrap: wrap; gap: 8px; padding-block: 8px !important; }
+  .dashboard-nav-actions { gap: 6px !important; }
+  .dashboard-main-layout main { min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

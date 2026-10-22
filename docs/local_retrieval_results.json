@@ -1,0 +1,138 @@
+{
+  "methodology": "sqlite-source-provenance-v1",
+  "k": 3,
+  "limitations": [
+    "Synthetic fixtures; not representative of all documents",
+    "Real SQLite retrieval; no embeddings, PostgreSQL or LLM calls",
+    "Source-page accuracy is not semantic citation correctness",
+    "Answer quality and groundedness are unmeasured"
+  ],
+  "runs": {
+    "baseline": {
+      "cases": 6,
+      "hit_rate_at_3": 1.0,
+      "supporting_page_accuracy_at_3": 0.0,
+      "mean_retrieval_latency_ms": 0.397,
+      "details": [
+        {
+          "id": "warranty",
+          "retrieval_hit": true,
+          "correct_supporting_page": false,
+          "retrieval_latency_ms": 0.775,
+          "retrieved_pages": [
+            null
+          ]
+        },
+        {
+          "id": "blank-page",
+          "retrieval_hit": true,
+          "correct_supporting_page": false,
+          "retrieval_latency_ms": 0.358,
+          "retrieved_pages": [
+            null
+          ]
+        },
+        {
+          "id": "termination",
+          "retrieval_hit": true,
+          "correct_supporting_page": false,
+          "retrieval_latency_ms": 0.312,
+          "retrieved_pages": [
+            null
+          ]
+        },
+        {
+          "id": "retention",
+          "retrieval_hit": true,
+          "correct_supporting_page": false,
+          "retrieval_latency_ms": 0.34,
+          "retrieved_pages": [
+            null
+          ]
+        },
+        {
+          "id": "budget",
+          "retrieval_hit": true,
+          "correct_supporting_page": false,
+          "retrieval_latency_ms": 0.29,
+          "retrieved_pages": [
+            null
+          ]
+        },
+        {
+          "id": "support",
+          "retrieval_hit": true,
+          "correct_supporting_page": false,
+          "retrieval_latency_ms": 0.304,
+          "retrieved_pages": [
+            null
+          ]
+        }
+      ]
+    },
+    "current": {
+      "cases": 6,
+      "hit_rate_at_3": 1.0,
+      "supporting_page_accuracy_at_3": 1.0,
+      "mean_retrieval_latency_ms": 0.358,
+      "details": [
+        {
+          "id": "warranty",
+          "retrieval_hit": true,
+          "correct_supporting_page": true,
+          "retrieval_latency_ms": 0.575,
+          "retrieved_pages": [
+            2
+          ]
+        },
+        {
+          "id": "blank-page",
+          "retrieval_hit": true,
+          "correct_supporting_page": true,
+          "retrieval_latency_ms": 0.3,
+          "retrieved_pages": [
+            3
+          ]
+        },
+        {
+          "id": "termination",
+          "retrieval_hit": true,
+          "correct_supporting_page": true,
+          "retrieval_latency_ms": 0.326,
+          "retrieved_pages": [
+            1
+          ]
+        },
+        {
+          "id": "retention",
+          "retrieval_hit": true,
+          "correct_supporting_page": true,
+          "retrieval_latency_ms": 0.317,
+          "retrieved_pages": [
+            2
+          ]
+        },
+        {
+          "id": "budget",
+          "retrieval_hit": true,
+          "correct_supporting_page": true,
+          "retrieval_latency_ms": 0.305,
+          "retrieved_pages": [
+            3,
+            1
+          ]
+        },
+        {
+          "id": "support",
+          "retrieval_hit": true,
+          "correct_supporting_page": true,
+          "retrieval_latency_ms": 0.323,
+          "retrieved_pages": [
+            1,
+            2
+          ]
+        }
+      ]
+    }
+  }
+}

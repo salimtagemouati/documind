@@ -29,7 +29,7 @@ COPY --from=builder /install /usr/local
 COPY app/ ./app/
 
 # Non-root user for security
-RUN useradd -m -u 1001 documind && chown -R documind:documind /app
+RUN useradd -m -u 1001 documind && mkdir -p /app/data/uploads && chown -R documind:documind /app
 USER documind
 
 ENV PYTHONPATH=/app
@@ -44,4 +44,4 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
 # One async worker avoids duplicate startup state and reduces cold-start memory.
 # WebSocket connections require --ws websockets (included via uvicorn[standard])
 # Shell form allows expansion of the PORT injected by Cloud Run.
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]

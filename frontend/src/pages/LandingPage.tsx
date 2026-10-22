@@ -85,7 +85,7 @@ const features = [
     icon: <IconFileText />,
     color: 'violet',
     title: 'Smart Summarization',
-    desc: 'Map-reduce summarization that captures key insights across long documents.',
+    desc: 'Factual summaries drawn from passages sampled across your document.',
   },
   {
     icon: <IconUsers />,
@@ -97,7 +97,7 @@ const features = [
     icon: <IconBarChart />,
     color: 'emerald',
     title: 'Sentiment Analysis',
-    desc: 'Understand the emotional tone and sentiment distribution across your document content.',
+    desc: 'Review the overall tone and sentiment of the analyzed document passages.',
   },
   {
     icon: <IconClock />,
@@ -227,7 +227,7 @@ export default function LandingPage() {
         <div className="hero-content">
           <div className="hero-badge fade-up">
             <span className="hero-badge-dot" />
-            Two-Stage RAG · pgvector · Multi-Provider LLM · LLM Re-ranking
+            Document Q&A · Semantic Search · Source Citations
           </div>
 
           <h1 className="hero-title fade-up fade-up-d1">
@@ -237,7 +237,7 @@ export default function LandingPage() {
 
           <p className="hero-subtitle fade-up fade-up-d2">
             Ask complex questions across single or multiple documents.
-            Experience hybrid semantic search, two-stage re-ranking, and
+            Use hybrid semantic search and
             grounded answers with source-level provenance.
           </p>
 
@@ -445,7 +445,7 @@ export default function LandingPage() {
             <li><a href="#features">Features</a></li>
             <li><a href="#pricing">Pricing</a></li>
             <li>
-              <a href="https://github.com" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <a href="https://github.com/salimtagemouati/documind" target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                 <IconGithub /> GitHub
               </a>
             </li>

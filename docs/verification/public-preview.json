@@ -1,0 +1,16 @@
+{
+  "url": "https://transformation-cardiff-usb-personality.trycloudflare.com",
+  "checks": [
+    "Public HTTPS, SPA deep routes, readiness and private/missing paths",
+    "Public PDF upload, Gemini analysis and persistent pgvector indexing",
+    "Separate account cannot read another account document",
+    "Authenticated public WSS progress connection",
+    "Public live answer with page 2 citation",
+    "Public document deletion"
+  ],
+  "fixtures": "synthetic only",
+  "answer": "According to Source 1 (Page 2), the warranty lasts 24 months.",
+  "status": "passed",
+  "prior_full_workflow_url": "https://trans-regard-compliance-created.trycloudflare.com",
+  "service_verification": "macOS launch agent loaded; new public URL and readiness verified after service startup"
+}

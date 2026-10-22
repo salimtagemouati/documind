@@ -15,7 +15,7 @@ Official references:
 - A Google Cloud project with billing enabled.
 - Supabase migrations applied, including the 768-dimensional pgvector migration and HNSW index.
 - `backend/.env` present locally and ignored by Git.
-- A production Redis URL. Cloud Run can start without Redis, but cache and cross-instance WebSocket pub/sub degrade.
+- A TLS production Redis URL (`rediss://`). Cloud Run can start without Redis, but cache and cross-instance WebSocket pub/sub degrade.
 - A dedicated Cloud Run service account.
 
 Create the service account and grant only the permissions it needs:
@@ -33,7 +33,7 @@ The deployer also needs Cloud Run Admin, Service Account User, Cloud Build permi
 
 ## 2. Prepare local configuration
 
-Copy `backend/.env.example` to `backend/.env` and fill it locally. Required entries include:
+Run `backend/.venv/bin/python scripts/setup_production.py` from the repository root. It creates ignored `backend/.env.production`, preserves existing files, generates a production signing secret and reuses the local Gemini key. Fill remaining placeholders locally. Pass `--env-file .env.production` to the helper when running from `backend/`. Required entries include:
 
 - application signing secret;
 - Supabase URL, database URL, anonymous key, and service-role key;
@@ -53,6 +53,7 @@ cd backend
 
 .venv/bin/python ../scripts/deploy_cloud_run.py \
   --project "$GOOGLE_CLOUD_PROJECT" \
+  --env-file .env.production \
   --region europe-west1 \
   --service-account "documind-runner@$GOOGLE_CLOUD_PROJECT.iam.gserviceaccount.com"
 ```
@@ -64,6 +65,7 @@ Validation rejects template values, SQLite database URLs, local-only frontend or
 ```bash
 .venv/bin/python ../scripts/deploy_cloud_run.py \
   --project "$GOOGLE_CLOUD_PROJECT" \
+  --env-file .env.production \
   --region europe-west1 \
   --service-account "documind-runner@$GOOGLE_CLOUD_PROJECT.iam.gserviceaccount.com" \
   --apply
@@ -79,7 +81,7 @@ The deployment uses:
 - 60-minute request timeout and best-effort session affinity for WebSockets;
 - one asynchronous Uvicorn worker per container.
 
-These settings favor responsiveness and reliable background document processing over the lowest possible cost. Tune them using Cloud Run latency, instance, CPU, memory, and billable-time metrics.
+These settings favor responsiveness over the lowest possible cost. In-process background tasks are still not durable across instance termination; use a durable worker before claiming reliable production processing. Tune them using Cloud Run latency, instance, CPU, memory, and billable-time metrics.
 
 ## 4. Cut over the frontend
 
@@ -96,6 +98,7 @@ Redeploy the frontend, then update the backend `ALLOWED_ORIGINS` and `FRONTEND_U
 ```bash
 gcloud run services describe documind-api \
   --project "$GOOGLE_CLOUD_PROJECT" \
+  --env-file .env.production \
   --region europe-west1
 ```
 
@@ -117,4 +120,5 @@ Keep Render available for rollback until production traffic and error rates are 
 - WebSockets are supported, but each connection is still an HTTP request subject to the configured timeout. The frontend reconnect logic is therefore required.
 - A minimum instance reduces cold starts but adds idle cost.
 - Best-effort session affinity is not a substitute for Redis-backed shared state.
+- `STORAGE_BACKEND=auto` or `supabase` is required for the hosted Supabase design; do not use `local` on an ephemeral container.
 - The container filesystem is ephemeral; benchmark caches and uploaded documents must not rely on local persistence.

@@ -75,3 +75,26 @@ def test_retry_schedule_uses_bounded_backoff_then_thirty_seconds():
     delays = schedule()
 
     assert [next(delays) for _ in range(7)] == [1, 2, 4, 8, 16, 30, 30]
+
+
+@pytest.mark.asyncio
+async def test_production_readiness_requires_shared_cache(monkeypatch):
+    from app.services import cache_service
+    monkeypatch.setattr(main.settings, 'ENVIRONMENT', 'production')
+    monkeypatch.setattr(main.settings, 'REDIS_URL', 'rediss://unused.invalid')
+    monkeypatch.setattr(main, 'check_database_health', AsyncMock(return_value=True))
+    monkeypatch.setattr(main, 'check_schema_health', AsyncMock(return_value=True))
+    monkeypatch.setattr(cache_service, 'get_redis', AsyncMock(side_effect=ConnectionError('unavailable')))
+    response = await main.ready()
+    assert response.status_code == 503
+    assert b'cache' in response.body
+
+
+@pytest.mark.asyncio
+async def test_production_readiness_rejects_missing_schema(monkeypatch):
+    monkeypatch.setattr(main.settings, 'ENVIRONMENT', 'production')
+    monkeypatch.setattr(main, 'check_database_health', AsyncMock(return_value=True))
+    monkeypatch.setattr(main, 'check_schema_health', AsyncMock(return_value=False))
+    response = await main.ready()
+    assert response.status_code == 503
+    assert b'schema' in response.body

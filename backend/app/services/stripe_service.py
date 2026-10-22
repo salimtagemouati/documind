@@ -16,12 +16,12 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import stripe
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.models.models import User
+from app.models.models import Document, User
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -189,7 +189,9 @@ async def check_document_limit(user_id: str, db: AsyncSession) -> None:
     Check if the user can upload another document.
     Raises ValueError if the free tier limit is reached.
     """
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    # Serialize concurrent uploads per owner until the new pending document is
+    # committed. Pending/failed documents also occupy storage slots.
+    result = await db.execute(select(User).where(User.id == UUID(user_id)).with_for_update())
     user = result.scalar_one_or_none()
     if not user:
         raise ValueError("User not found")
@@ -198,11 +200,11 @@ async def check_document_limit(user_id: str, db: AsyncSession) -> None:
     if is_pro:
         return  # No limits for pro users
 
-    doc_count = user.documents_processed or 0
+    doc_count = await db.scalar(select(func.count(Document.id)).where(Document.user_id == user.id))
     if doc_count >= settings.STRIPE_FREE_DOC_LIMIT:
         raise ValueError(
             f"Free tier limit reached: {settings.STRIPE_FREE_DOC_LIMIT} documents. "
-            f"Upgrade to Pro for unlimited documents."
+            f"Delete a document to free a slot."
         )
 
 

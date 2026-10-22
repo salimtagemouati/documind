@@ -1,0 +1,43 @@
+{
+  "model": "gemini/gemini-3.5-flash",
+  "database": "disposable PostgreSQL/pgvector",
+  "fixtures": "synthetic only",
+  "checks": [
+    "PDF upload, extraction, real Gemini embeddings, pgvector indexing, AI analysis",
+    "Real retrieval, generation, expected answer and page 2 citation",
+    "Bounded follow-up conversation",
+    "Unsupported question refused",
+    "Answer cache hit"
+  ],
+  "ingestion_ms": 29396,
+  "answer": {
+    "question": "How long does the warranty last?",
+    "answer": "According to Source 1 (Page 2), the warranty lasts 24 months.",
+    "sources": [
+      {
+        "content": "Warranty lasts 24 months. Support response time is 4 business hours.",
+        "chunk_index": 1,
+        "page_number": 2,
+        "similarity_score": 0.7724
+      },
+      {
+        "content": "Contract between Northwind and Acme.",
+        "chunk_index": 0,
+        "page_number": 1,
+        "similarity_score": 0.5312
+      }
+    ],
+    "model_used": "gemini/gemini-3.5-flash",
+    "tokens_used": 223,
+    "latency_ms": 24084,
+    "from_cache": false,
+    "query_id": "5871e109-2d59-4d22-aedf-31edf1833e99",
+    "reranked": false
+  },
+  "followup_answer": "According to Source 1 (Page 2), the support response time is 4 business hours.",
+  "unsupported_question": "This information is not found in the document.",
+  "format_checks": [],
+  "status": "failed",
+  "error_type": "AssertionError",
+  "error": "comparison.md: answer HTTP 429"
+}

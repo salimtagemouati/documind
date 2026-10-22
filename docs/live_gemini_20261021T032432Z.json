@@ -1,0 +1,9 @@
+{
+  "model": "gemini/gemini-3.5-flash",
+  "database": "disposable PostgreSQL/pgvector",
+  "fixtures": "synthetic only",
+  "checks": [],
+  "status": "failed",
+  "error_type": "AssertionError",
+  "error": "Processing: failed (Document processing failed. Check the file and server AI configuration, then upload again.)"
+}

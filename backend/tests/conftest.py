@@ -12,6 +12,8 @@ os.environ.setdefault("SUPABASE_ANON_KEY", "test-anon-key")
 os.environ.setdefault("SUPABASE_SERVICE_KEY", "test-service-key")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("ENVIRONMENT", "test")
+os.environ.setdefault("REDIS_URL", "")
+os.environ.setdefault("ANALYSIS_MODE", "separate")
 
 # ruff: noqa: E402
 import json
@@ -147,6 +149,12 @@ def mock_ai_and_gemini():
             '"label": "Positive", "score": 0.9, "confidence": 0.9, "tone": "formal", "explanation": "Good test", '
             '"answer": "Mock Answer", "id": 0}'
         )
+        base = json.loads(mock_choice.message.content)
+        mock_choice.message.content = json.dumps({**base,
+            "entities": {key: base[key] for key in ["persons", "organizations", "locations", "dates", "technologies", "monetary_values", "other"]},
+            "sentiment": {key: base[key] for key in ["label", "score", "confidence", "tone", "explanation"]},
+            "keywords": ["warranty"],
+        })
         mock_resp = MagicMock()
         mock_resp.choices = [mock_choice]
         mock_litellm_comp.return_value = mock_resp
@@ -181,3 +189,8 @@ def mock_supabase():
             "admin": mock_admin,
             "bucket": mock_bucket,
         }
+
+
+@pytest.fixture(autouse=True)
+def isolate_local_uploads(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "LOCAL_UPLOAD_DIR", str(tmp_path / "data" / "uploads"))

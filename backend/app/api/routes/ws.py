@@ -32,7 +32,7 @@ from sqlalchemy import select
 from app.core.logging import get_logger
 from app.core.security import decode_token
 from app.db.database import AsyncSessionLocal
-from app.models.models import Document, DocumentStatus
+from app.models.models import Document, DocumentStatus, User
 from app.services.progress_service import subscribe_progress
 
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
@@ -57,7 +57,8 @@ async def document_progress_ws(
     try:
         payload = decode_token(token)
         user_id = payload.get("sub")
-        if not user_id:
+        UUID(document_id)
+        if not user_id or payload.get("type") != "access":
             await websocket.close(code=4001, reason="Invalid token")
             return
     except Exception:
@@ -77,6 +78,10 @@ async def document_progress_ws(
         # ─── Check current document status ────────────────────────────────
         # If the document is already ready or failed, send that immediately
         async with AsyncSessionLocal() as db:
+            user = await db.get(User, UUID(user_id))
+            if not user or not user.is_active:
+                await websocket.close(code=4001, reason="Account unavailable")
+                return
             result = await db.execute(
                 select(Document).where(
                     Document.id == UUID(document_id),
