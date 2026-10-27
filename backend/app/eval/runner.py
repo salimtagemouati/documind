@@ -80,7 +80,7 @@ def generate_markdown_report(summary: dict) -> str:
         "",
         "### 1. Global Benchmark Metrics (Run A vs. Run B)",
         "",
-        "| Metric | Baseline (Dense Vector) | Two-Stage (Hybrid + Re-rank) | Delta (Δ) | Verdict |",
+        "| Metric | Baseline (Dense Vector) | Dense + Re-rank | Delta (Δ) | Verdict |",
         "| :--- | :---: | :---: | :---: | :--- |",
     ]
 
@@ -95,7 +95,7 @@ def generate_markdown_report(summary: dict) -> str:
             r_str = f"{m['reranked']:.1%}"
             d_str = f"{delta_val:+.1%}" if delta_val != 0 else "0.0%"
 
-        verdict = "Significant Gain 🚀" if delta_val >= 0.10 else ("Noticeable Gain 📈" if delta_val > 0 else "Maintained 🛡️")
+        verdict = "Increase" if delta_val > 0 else ("Decrease" if delta_val < 0 else "No change")
         lines.append(f"| **{m['name']}** | {b_str} | {r_str} | **`{d_str}`** | {verdict} |")
 
     lines.extend([
@@ -120,12 +120,12 @@ def generate_markdown_report(summary: dict) -> str:
             "#### Adversarial & Out-of-Domain Query Handling",
             f"- **Negative Refusal Accuracy (Baseline)**: {ad['baseline_refusal']:.1%}",
             f"- **Negative Refusal Accuracy (Re-ranked)**: {ad['reranked_refusal']:.1%}",
-            "- A refusal score below 100% means the pipeline answered at least one unanswerable case and must not be described as reliably refusing unsupported questions.",
+            "- Phrase matching is imperfect: manually review each answer before drawing conclusions.",
         ])
 
     lines.extend([
         "",
-        "## Technical Analysis: Why Two-Stage Retrieval Improves Quality",
+        "## Technical Analysis: Two-Stage Retrieval",
         "",
         "1. **Candidate ranking**: The enhanced run scores a larger dense candidate pool in one batched LLM request before selecting the final context.",
         "2. **MRR interpretation**: MRR measures where this harness first finds a required keyword. It is a lexical proxy, not proof of answer quality.",
@@ -134,10 +134,10 @@ def generate_markdown_report(summary: dict) -> str:
         "",
         "> [!NOTE]",
         "> **Methodological Transparency & Limitations**:",
-        "> - **Sample Size**: The benchmark evaluates 15 curated gold-standard cases across 3 document domains. While representative of high-stakes enterprise use cases, larger corpora (hundreds of documents) may introduce more retrieval variance.",
+        "> - **Sample Size**: Up to 15 curated cases across 3 synthetic documents are insufficient to establish production quality.",
         "> - **Groundedness proxy**: Groundedness is computed with lexical token overlap. No independent LLM judge or human adjudication is used.",
         "> - **Retrieval mode**: The harness uses NumPy cosine similarity in memory. It does not validate pgvector, HNSW, PostgreSQL FTS, RRF, or multi-tenant database filters.",
-        "> - **Latency Trade-Off**: Two-stage re-ranking adds ~1.0-1.5s of latency due to the second-stage scoring call. DocuMind optimizes this by batching candidates and restricting the pool to top-15 candidates.",
+        "> - **Latency**: Cached and uncached calls are mixed; these timings do not establish a latency trade-off.",
         "",
     ])
 
@@ -186,7 +186,7 @@ async def main():
     rows = []
     for m in summary["metrics"]:
         delta_str = f"+{m['delta']:.1%}" if m['delta'] > 0 else (f"{m['delta']:.1%}" if m['delta'] < 0 else "0.0%")
-        impact = "Significant Gain 🚀" if m['delta'] >= 0.10 else ("Noticeable Gain 📈" if m['delta'] > 0 else "Maintained 🛡️")
+        impact = "Increase" if m['delta'] > 0 else ("Decrease" if m['delta'] < 0 else "No change")
         rows.append([
             m["name"],
             f"{m['baseline']:.1%}",

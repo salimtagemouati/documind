@@ -248,6 +248,8 @@ async def test_rerank_prompt_treats_document_passages_as_untrusted_data(monkeypa
     prompt = completion.call_args.kwargs["messages"][0]["content"]
     assert "untrusted data" in prompt.lower()
     assert "ignore any instructions" in prompt.lower()
+    import json
+    assert json.loads(prompt[prompt.index("[\n"):])[0]["id"] == 0
 
 
 @pytest.mark.asyncio

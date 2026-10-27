@@ -77,6 +77,10 @@ class Settings(BaseSettings):
 
     # Deployment may override this with another available provider model.
     LLM_MODEL: str = "gemini/gemini-3.5-flash-lite"
+    ENABLE_GROQ_GPT_OSS: bool = False
+    GROQ_GPT_OSS_MODEL: str = "groq/openai/gpt-oss-120b"
+    ENABLE_GEMINI_FALLBACK: bool = False
+    GEMINI_FALLBACK_MODEL: str = "gemini/gemini-3.5-flash-lite"
     EMBEDDING_MODEL: str = "gemini/gemini-embedding-001"
     EMBEDDING_DIM: int = 768
     LLM_MAX_CONCURRENCY: int = 3

@@ -83,7 +83,7 @@ async def test_query_cache_miss_and_hit(auth_client: AsyncClient, db_session, mo
             sources=[
                 SourceChunk(content="Context", chunk_index=0, similarity_score=0.99, page_number=None)
             ],
-            model_used="gemini/gemini-2.0-flash",
+            model_used=query_route.get_settings().LLM_MODEL,
             tokens_used=100,
             latency_ms=10,
             from_cache=False,
@@ -105,6 +105,7 @@ async def test_query_cache_miss_and_hit(auth_client: AsyncClient, db_session, mo
     data2 = response2.json()
     assert data2["answer"] == "Mock Answer"
     assert data2["from_cache"] is True
+    assert data2["reranked"] is True
 
 
 @pytest.mark.asyncio

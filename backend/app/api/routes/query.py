@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.limiter import exempt_non_demo_request, limiter
 from app.core.logging import get_logger
 from app.core.security import get_current_user
@@ -73,7 +74,9 @@ async def query_document(
 
     # Check cache first (same question + document → return cached answer)
     query_id = uuid.uuid4()
-    cache_question = f"v2:{payload.max_tokens}:" + payload.question
+    config = get_settings()
+    primary_model = config.GROQ_GPT_OSS_MODEL if config.ENABLE_GROQ_GPT_OSS else config.LLM_MODEL
+    cache_question = f"v4:{primary_model}:{payload.max_tokens}:" + payload.question
     cached = await get_cached_answer(str(payload.document_id), cache_question) if not payload.history else None
     if cached:
         logger.info("query_cache_hit", document_id=str(payload.document_id))
@@ -163,8 +166,9 @@ async def query_document(
         "latency_ms": response.latency_ms,
         "from_cache": True,
         "query_id": str(query_id),
+        "reranked": response.reranked,
     }
-    if not payload.history:
+    if not payload.history and response.model_used == primary_model:
         await set_cached_answer(str(payload.document_id), cache_question, cache_payload)
 
     return response

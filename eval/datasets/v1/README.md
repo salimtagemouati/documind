@@ -1,0 +1,5 @@
+# DocuMind synthetic dataset v1
+
+`dataset.json` contains 8 fictional documents, 16 pages and 64 explicitly authored question/reference-answer labels. Four documents and 32 questions are development; the other four documents and 32 questions are held out. Cross-document examples stay within each split. Questions, labels and supporting page IDs were authored from the synthetic source text, not from model responses. They have **not** received independent human review; the labels must be audited before claims of accuracy. This is a small, stylized corpus and does not meet the 100-question / 20-document target in the evaluation plan.
+
+The SHA-256 file freezes the current byte representation. Any intentional revision must create a new dataset version rather than replace v1. The `context` page list is frozen generation input; `supporting_evidence` and expected answers are labels for review and are never sent to the models. Some deliberately injected document text contains fake citation markers. Empty evidence for negative questions indicates absence, not supporting proof. Source content is synthetic and includes no customer data.

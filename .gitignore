@@ -55,3 +55,4 @@ logs/
 # Evaluation Cache
 .eval_cache/
 backend/.eval_cache/
+eval/runs/

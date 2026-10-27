@@ -102,7 +102,7 @@ async def _enforce_pacing(min_interval: float = 2.0) -> None:
         _last_request_time = loop.time()
 
 
-async def call_with_limits(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
+async def call_with_limits(coro_factory: Callable[[], Coroutine[Any, Any, T]], max_attempts: int = 3) -> T:
     """
     Execute an LLM coroutine under concurrency semaphore and rate-limit retry protection.
 
@@ -115,7 +115,7 @@ async def call_with_limits(coro_factory: Callable[[], Coroutine[Any, Any, T]]) -
     async with sem:
         async for attempt in AsyncRetrying(
             retry=retry_if_exception(is_retryable_llm_error),
-            stop=stop_after_attempt(3),
+            stop=stop_after_attempt(max_attempts),
             wait=smart_wait,
             reraise=True,
         ):

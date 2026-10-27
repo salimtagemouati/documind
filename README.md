@@ -2,11 +2,32 @@
 
 [![CI](https://github.com/salimtagemouati/documind/actions/workflows/ci.yml/badge.svg)](https://github.com/salimtagemouati/documind/actions/workflows/ci.yml)
 
-Upload documents, inspect summaries and extracted entities, and ask questions with source citations. Built with React, TypeScript, FastAPI, SQLAlchemy and LiteLLM. PostgreSQL deployments support pgvector and hybrid lexical/vector retrieval; local development uses SQLite.
+DocuMind is a document intelligence application for uploading PDF, DOCX, TXT and Markdown files, reviewing summaries and extracted entities, and asking questions with source excerpts. Its React/TypeScript frontend talks to a FastAPI backend; SQLAlchemy stores application data in SQLite locally or PostgreSQL with pgvector for hosted deployments. LiteLLM provides generation and embeddings. Supabase Storage and Redis are optional integrations, and Stripe supports subscription workflows.
 
-## Try it locally
+## How it works
 
-Requires **Python 3.11+** and **Node.js 22.12+**. Run these commands from a clone of this repository:
+1. The API validates an upload, stores the original, extracts text, chunks it, and generates analysis in an in-process background task. PDF pages and DOCX tables are retained where possible; scanned PDFs need OCR before upload.
+2. PostgreSQL retrieval combines cosine similarity from 768-dimensional pgvector embeddings with an independent English full-text search using reciprocal rank fusion. SQLite uses a local lexical fallback. Optional LLM reranking is disabled by default.
+3. The generator receives retrieved passages as untrusted data and is asked to answer with source references. Deterministic checks reject malformed source IDs and incorrect page references, insert known omitted pages, and return an abstention or retry message when evidence or references are unusable.
+4. The API returns the answer and ordered source excerpts. A valid reference confirms only that its number and page match a retrieved chunk; it does **not** prove that a claim is supported. Prompt separation is a defense in depth, not a guarantee against injection.
+
+```mermaid
+flowchart LR
+    UI[React / TypeScript] --> API[FastAPI / application JWT]
+    API --> DB[(SQLite or PostgreSQL + pgvector)]
+    API --> Files[Local disk or Supabase Storage]
+    API --> Retrieval[SQLite lexical or PostgreSQL dense + FTS + RRF]
+    Retrieval --> Rerank[Optional reranking]
+    Rerank --> LLM[LiteLLM generation]
+    LLM --> Validation[Citation-reference checks]
+    Validation --> Answer[Answer and source excerpts]
+```
+
+The UI includes document upload and analysis, single-document chat with bounded history, cross-document questions, and a read-only demo with seeded fictional documents. API routes and retrieval queries check document ownership. Database RLS and storage controls require deployment-specific verification; the local tests are not a production security attestation.
+
+## Local development
+
+Requires Python 3.11+ and Node.js 22.12+. From a clone:
 
 ```bash
 python3 scripts/setup_local.py
@@ -17,7 +38,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-In a second terminal, from the repository root:
+In another terminal:
 
 ```bash
 cd frontend
@@ -25,130 +46,96 @@ npm ci
 npm run dev
 ```
 
-Open **http://localhost:5173/demo** to explore three seeded sample documents without creating an account. The setup script generates a random signing secret and preserves existing `.env` files.
+Open `http://localhost:5173/demo` for the seeded read-only workspace. `setup_local.py` creates local configuration with a random signing secret and preserves existing `.env` files. The fixture analyses are pre-authored; demo questions and new document analyses require a usable AI provider. Local SQLite retrieval is lexical and is not a test of pgvector or embeddings. See [local development](docs/LOCAL_DEV.md) for details.
 
-| Capability | Local requirements |
-| --- | --- |
-| Landing page, registration, sign-in, demo analyses, document listing | No external services or provider credentials |
-| Upload and store PDF, DOCX, TXT or Markdown files | Local SQLite and private disk storage, created automatically |
-| Generate summaries, entities, sentiment and answers | A valid credential and model for your chosen AI provider |
-| Semantic retrieval, PostgreSQL full-text search and RRF | PostgreSQL with pgvector, migrations and embedding credentials |
-| Shared cache and progress events across workers | Redis; local single-process mode works without it |
-| Paid subscriptions | Optional Stripe configuration; disabled by default |
+A local Docker stack is also available with `python3 scripts/setup_local.py` followed by `docker compose up --build`. It uses SQLite and a persistent local volume. See [deployment notes](docs/DEPLOYMENT.md) for hosted configuration; this repository does not assert that a public deployment is currently live.
 
-For AI generation, edit `backend/.env` and set `GOOGLE_API_KEY` with a model your account can access, or configure another LiteLLM provider using `LLM_MODEL` and its corresponding key. Never commit credentials. Uploaded documents fail visibly if all AI analysis calls fail; the app does not manufacture analysis results.
+## Model configuration
 
-The sample analyses are pre-authored fixtures. Demo questions call the configured provider; they are not canned answers. SQLite retrieval is lexical and does not validate the production vector-search path.
+Settings are loaded from `backend/.env` or the process environment. The generated local configuration and [backend example](backend/.env.example) use placeholders; never commit credentials. For local SQLite and Gemini generation, the relevant settings are:
 
-## Verification status — October 2026
-
-A complete live Gemini Flash Lite + PostgreSQL/pgvector run passed PDF, Markdown, adversarial TXT and DOCX table uploads, analysis, cited answers, follow-up, refusal, multi-document synthesis, caching and deletion. Earlier quota/timeout failures are preserved in dated artifacts; see the [latest passing raw run](docs/live_gemini_results.json) and [audit](docs/ENGINEERING_AUDIT.md).
-
-Six reproducible synthetic retrieval fixtures retained 6/6 retrieval hits while supporting-page accuracy improved from 0/6 to 6/6. This is a provenance measurement, not a general factuality benchmark. Optional reranking is disabled by default pending representative evidence. Analysis combines summary, entities, sentiment and keywords into one validated generation call.
-
-```sh
-backend/.venv/bin/python scripts/evaluate_local.py
-# Requires local Docker; no provider credentials:
-backend/.venv/bin/python scripts/check_pgvector.py
-# Explicit live test: sends synthetic documents to Gemini using backend/.env:
-backend/.venv/bin/python scripts/live_gemini_smoke.py
+```dotenv
+SECRET_KEY=replace-with-a-long-random-secret
+ENVIRONMENT=development
+DATABASE_URL=sqlite+aiosqlite:///./dev.db
+SUPABASE_URL=https://unused.invalid
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_KEY=
+STORAGE_BACKEND=local
+REDIS_URL=
+GOOGLE_API_KEY=replace-with-your-google-api-key
+LLM_MODEL=gemini/gemini-3.5-flash-lite
+EMBEDDING_MODEL=gemini/gemini-embedding-001
+EMBEDDING_DIM=768
+ENABLE_RERANKING=false
 ```
 
-PDF physical pages and DOCX tables are preserved. Sources include full retrieved passages. Single-document chat accepts up to three bounded prior turns. Scanned PDFs need OCR before upload. Ingestion is currently in-process and not durable across restarts; see release blockers in the audit.
+Gemini remains the default. For the optional managed Groq GPT-OSS generation route, set the following after reviewing provider access, privacy and cost:
 
-Launch instructions: [GO_LIVE.md](docs/GO_LIVE.md). Current checks: 118 backend tests (61.55% coverage) and 7 frontend tests pass. Permanent cloud hosting remains unconfigured.
-
-## Hosted demo status
-
-An account-free temporary HTTPS preview can run the complete application on this Mac. It uses the existing backend credential, a separate persistent Docker PostgreSQL database, private local uploads and a built frontend served by FastAPI. Run `backend/.venv/bin/python scripts/preview.py start --share`, then `backend/.venv/bin/python scripts/preview.py status` for the current URL. Docker, installed dependencies and `cloudflared` must be available. The Mac must stay awake and connected; the URL changes after restart. This is a live preview, not permanent cloud hosting. See [preview operations](docs/GO_LIVE.md).
-
-On macOS, an optional login service restarts the preview after exit and at login:
-
-```sh
-backend/.venv/bin/python scripts/preview_service.py install
-backend/.venv/bin/python scripts/preview_service.py status
-# Stop the service and preserve its database/uploads:
-backend/.venv/bin/python scripts/preview_service.py remove
+```dotenv
+GROQ_API_KEY=replace-with-your-groq-api-key
+ENABLE_GROQ_GPT_OSS=true
+GROQ_GPT_OSS_MODEL=groq/openai/gpt-oss-120b
+ENABLE_GEMINI_FALLBACK=false
+GEMINI_FALLBACK_MODEL=gemini/gemini-3.5-flash-lite
 ```
 
-Docker must remain running. To verify a shared preview with synthetic uploads and real provider calls, run `backend/.venv/bin/python scripts/check_preview.py`. The public URL is temporary, so it is intentionally not advertised as a permanent deployment link.
+Setting `ENABLE_GEMINI_FALLBACK=true` allows one Gemini fallback attempt after a transient Groq failure; the primary provider's limiter may retry first. Keep the Google key available for Gemini embeddings and any configured fallback. Reranking uses `LLM_MODEL` separately. This optional route has mock regression tests but has not been validated by a live GPT-OSS benchmark. Do not change the embedding model or vector dimensions for an existing index without planning re-embedding and migration.
 
-## Docker
+Hosted PostgreSQL, Supabase Storage, Redis and Stripe require additional configuration. See [deployment](docs/DEPLOYMENT.md) and [go-live notes](docs/GO_LIVE.md). Service credentials and database URLs are server-side only.
 
-```bash
-python3 scripts/setup_local.py
-docker compose up --build
-```
-
-Open http://localhost:5173. Compose runs the API, Vite and Redis, with a persistent `api_data` volume for SQLite and uploaded originals. This is a local development stack. `docker compose down` retains data; removing volumes erases it. The hosted design uses PostgreSQL and Supabase Storage. `STORAGE_BACKEND=local` also supports PostgreSQL with persistent private disk storage for local integration testing.
-
-## Main workflows
-
-- **Document processing:** validate size/type, store the original, extract text, chunk, index, then generate analysis in background.
-- **Document Q&A:** retrieve owner-filtered evidence, optionally rerank, generate a cited answer, and retain history for registered users.
-- **Cross-document Q&A:** select multiple documents and retrieve balanced evidence across them.
-- **Public demo:** three fictional sample documents, read-only access and per-IP query limits.
-- **Quality panel:** inspect the historical evaluation artifact with an explicit methodology warning.
-
-```mermaid
-flowchart LR
-    UI[React / TypeScript] --> API[FastAPI / JWT]
-    API --> DB[(SQLite locally / PostgreSQL in production)]
-    API --> Files[Local disk / Supabase Storage]
-    API --> Retrieval[Lexical locally / pgvector + FTS + RRF]
-    Retrieval --> Rerank[Optional LLM reranking]
-    Rerank --> LLM[LiteLLM provider]
-    LLM --> Answer[Answer and source citations]
-```
-
-PostgreSQL embeddings use 768 dimensions and a cosine HNSW index. Tenant checks are performed by the API and retrieval queries. Access tokens are checked against current database accounts, and the shared demo identity cannot use ordinary password login or write operations.
-
-## Verify the project
+## Tests and local checks
 
 ```bash
 cd backend
 source .venv/bin/activate
-ruff check app tests
+ruff check app/ tests/ --select E,F,I --ignore E501
 mypy app/services/rag_service.py app/services/rerank_service.py app/services/ai_service.py --follow-imports=skip --ignore-missing-imports
-pytest tests -q --cov=app --cov-report=term-missing --cov-fail-under=60
+pytest tests/ -q --cov=app --cov-report=term-missing --cov-fail-under=60
 python ../scripts/smoke_test.py
 
 cd ../frontend
-npm ci
 npm run lint
 npm test
 npm run build
 ```
 
-The smoke test starts a real API process against disposable SQLite, without reading your `.env`. It checks readiness, demo seeding, analysis responses, write protection, registration and tenant isolation. Unit/integration tests mock AI and Supabase calls; passing them does not establish live provider or hosted deployment health.
+Backend tests use test configuration and mock AI and Supabase calls. The process smoke test uses disposable SQLite. A separate local PostgreSQL integration check, `backend/.venv/bin/python scripts/check_pgvector.py`, requires Docker and uses a disposable container and deterministic vectors. CI runs backend and frontend checks, the local smoke and retrieval checks, PostgreSQL integration, and a container build. Passing these checks does not establish live-provider quality or deployed service health.
 
-GitHub Actions runs backend lint/type checks/tests, the process smoke test, local provenance evaluation, disposable PostgreSQL integration, frontend lint/build and a backend Docker build.
+## Offline evaluation
 
-## Evaluation limitations
-
-The historical 15-case artifact predates a corrected Precision@K formula, so its aggregate values must not be presented as validated results. The harness compares in-memory dense retrieval with dense retrieval plus reranking. It does not test PostgreSQL, HNSW, FTS, RRF, tenant isolation or multi-document balancing. Groundedness uses lexical overlap, not an independent factuality judge.
-
-To rerun with working provider credentials:
+The provider-neutral harness defaults to a dry run and never calls a provider in dry-run or mock mode. This example uses the frozen 12-question development pilot and makes **no API requests**:
 
 ```bash
-cd backend
-python -m app.eval.runner --cases 3
+backend/.venv/bin/python scripts/evaluate_models.py --dry-run --dataset eval/datasets/pilot_dev_v1/dataset.json --mode generation --split dev --max-output-tokens 2048 --timeout 60 --max-requests 36 --max-estimated-usd 1
 ```
 
-See [evaluation methodology](docs/EVALUATION_REPORT.md) for formulas and limitations.
+For a local mock run, replace `--dry-run` with `--mock` and add `--output-dir eval/runs/dev-mock`. Outputs under `eval/runs/` are ignored and may contain source text and answers. The end-to-end diagnostic uses synthetic text and SQLite lexical retrieval; it does not measure production pgvector/HNSW. The harness records reference validity, errors, timing and available token usage, but correctness, abstention and claim support require human review. Live calls require explicit authorization, credentials, provider/privacy checks and spending controls; the local estimated budget is not a guaranteed billing cap. See [live evaluation instructions](docs/LIVE_MODEL_EVALUATION.md), the [benchmark protocol](docs/MODEL_BENCHMARK_PROTOCOL.md), and the [blinded review rubric](docs/BLINDED_REVIEW_RUBRIC.md).
+
+The older 15-case in-memory artifact is historical and its aggregate results were invalidated by a prior Precision@K error. It is not evidence of current accuracy, production retrieval quality, or a reranking gain. No reviewed live GPT-OSS comparison has been completed. See [historical evaluation limitations](docs/EVALUATION_REPORT.md) and the [model comparison](docs/MODEL_COMPARISON.md).
+
+## Engineering improvements — October 2026
+
+- Added owner checks, safer demo behavior, bounded upload and parsing checks, and local PostgreSQL/tenant-isolation tests.
+- Added reference and page validation, explicit abstentions, untrusted-evidence prompts, reranking/fallback telemetry and model-aware answer caching.
+- Added an opt-in Groq route with bounded Gemini fallback while preserving Gemini and 768-dimensional embeddings by default.
+- Added a frozen synthetic evaluation dataset, a separate development pilot, offline/mock runs with request and estimated-spend controls, resumable journaling and blinded review tooling.
+
+These changes do not establish semantic claim support or complete production readiness. Remaining priorities include atomic quota enforcement, Stripe event reconciliation, durable isolated document processing, deployed RLS/storage verification, independent label and claim review, and representative live evaluation. See the [2026 audit](docs/AUDIT_2026.md), [improvement roadmap](docs/IMPROVEMENT_ROADMAP.md), [RAG evaluation plan](docs/RAG_EVALUATION_PLAN.md), [benchmark audit](docs/MODEL_BENCHMARK_AUDIT.md), [pilot review packet](docs/PILOT_DEV_REVIEW_PACKET.md), and [provider-readiness checklist](docs/PROVIDER_READINESS_CHECKLIST.md).
 
 ## Project layout
 
 ```text
-backend/app/       API routes, authentication, models and RAG services
-backend/tests/     Unit and integration tests
+backend/app/        API, authentication, models, document processing and RAG
+backend/tests/      Backend tests and evaluation-tool regression tests
 backend/migrations/ PostgreSQL billing and pgvector migrations
-frontend/src/      React pages, dashboard components, API client and auth store
-scripts/           Local setup, process smoke test, SQL schema and deployment helper
-docs/              Local development, deployment and evaluation notes
+frontend/src/       React UI and API client
+scripts/            Local setup, checks, evaluation and deployment helpers
+eval/datasets/      Frozen synthetic datasets and checksums
+docs/               Architecture, audits, evaluation and operations
 ```
 
-More detail: [architecture](docs/ARCHITECTURE.md), [engineering audit](docs/ENGINEERING_AUDIT.md), [interview showcase](docs/PROJECT_SHOWCASE.md), [local development](docs/LOCAL_DEV.md), and [deployment](docs/DEPLOYMENT.md).
+Additional references: [architecture](docs/ARCHITECTURE.md), [engineering audit](docs/ENGINEERING_AUDIT.md), and [project showcase](docs/PROJECT_SHOWCASE.md).
 
 ## License
 
