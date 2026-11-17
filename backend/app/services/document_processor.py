@@ -15,7 +15,10 @@ from zipfile import BadZipFile, ZipFile
 
 import tiktoken
 from docx import Document as DocxDocument
-from pypdf import PdfReader
+import subprocess
+import sys
+import os
+import json
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -30,17 +33,18 @@ _tokenizer = tiktoken.get_encoding("cl100k_base")
 # ─── Text extraction ──────────────────────────────────────────────────────────
 def extract_text_from_pdf(file_bytes: bytes) -> Tuple[str, int]:
     """Extract full text from PDF. Returns (text, page_count)."""
-    reader = PdfReader(io.BytesIO(file_bytes))
-    if reader.is_encrypted:
-        raise ValueError("Encrypted PDFs are not supported. Upload an unlocked copy.")
-    if len(reader.pages) > 500:
-        raise ValueError("PDF exceeds the 500-page processing limit.")
-    pages = []
-    for page in reader.pages:
-        text = page.extract_text() or ""
-        pages.append(text.strip())
-    full_text = "\f".join(pages)
-    return full_text, len(reader.pages)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-I", str(Path(__file__).with_name("pdf_worker.py"))],
+            input=file_bytes, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=20, check=True, env={"PATH": os.defpath, "PYTHONIOENCODING": "utf-8"},
+        )
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+        raise ValueError("PDF processing failed or exceeded its resource limit.") from exc
+    response = json.loads(result.stdout)
+    if "error" in response:
+        raise ValueError(response["error"])
+    return response["text"], response["pages"]
 
 
 def extract_text_from_docx(file_bytes: bytes) -> str:

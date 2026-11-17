@@ -62,6 +62,14 @@ class DocumentStatus(str, enum.Enum):
 
 
 # ─── Users ───────────────────────────────────────────────────────────────────
+class RefreshSession(Base):
+    __tablename__ = "refresh_sessions"
+
+    id = Column(String(36), primary_key=True)
+    token_digest = Column(String(64), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+
+
 class User(Base):
     __tablename__ = "users"
 

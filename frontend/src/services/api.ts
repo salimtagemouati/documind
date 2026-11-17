@@ -95,6 +95,8 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config
 })
 
+let pendingRefresh: Promise<AxiosResponse<{ access_token: string; refresh_token: string }>> | undefined
+
 // Auto-refresh on 401
 api.interceptors.response.use(
   (res: AxiosResponse) => res,
@@ -105,7 +107,9 @@ api.interceptors.response.use(
       const refresh = localStorage.getItem('refresh_token')
       if (refresh) {
         try {
-          const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refresh_token: refresh })
+          pendingRefresh ??= axios.post(`${BASE_URL}/auth/refresh`, { refresh_token: refresh }).finally(() => { pendingRefresh = undefined })
+          const { data } = await pendingRefresh
+          if (!localStorage.getItem('refresh_token')) return Promise.reject(error)
           localStorage.setItem('access_token', data.access_token)
           localStorage.setItem('refresh_token', data.refresh_token)
           original.headers.Authorization = `Bearer ${data.access_token}`
@@ -124,6 +128,7 @@ api.interceptors.response.use(
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
+  logout: (token: string) => axios.post(`${BASE_URL}/auth/logout`, { refresh_token: token }),
   register: (email: string, password: string, fullName?: string) =>
     api.post('/auth/register', { email, password, full_name: fullName }),
 

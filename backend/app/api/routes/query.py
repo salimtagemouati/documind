@@ -28,7 +28,7 @@ from app.schemas.schemas import (
 )
 from app.services.ai_service import answer_question, synthesize_multi_document_query
 from app.services.cache_service import get_cached_answer, set_cached_answer
-from app.services.stripe_service import check_query_limit, increment_daily_queries
+from app.services.stripe_service import reserve_query
 
 router = APIRouter(prefix="/query", tags=["Q&A"])
 logger = get_logger(__name__)
@@ -86,11 +86,10 @@ async def query_document(
 
     # ── Tier enforcement: check daily query limit (only for non-cached) ───
     is_demo = bool(current_user.get("is_demo"))
-    if not is_demo:
-        try:
-            await check_query_limit(str(user_id), db)
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+    try:
+        await reserve_query(str(user_id), db, demo=is_demo)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
     # Run RAG pipeline with pgvector and two-stage re-ranking
     try:
@@ -152,9 +151,7 @@ async def query_document(
 
     await db.commit()
 
-    # Track daily query count for tier enforcement
-    await increment_daily_queries(str(user_id), db)
-    await db.commit()
+
 
     # Cache the response (serialize for storage)
     cache_payload = {
@@ -215,11 +212,10 @@ async def query_multiple_documents(
 
     # Tier enforcement
     is_demo = bool(current_user.get("is_demo"))
-    if not is_demo:
-        try:
-            await check_query_limit(str(user_id), db)
-        except ValueError as e:
-            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
+    try:
+        await reserve_query(str(user_id), db, demo=is_demo)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(e))
 
     query_id = uuid.uuid4()
     docs_meta = [{"id": d.id, "name": d.original_filename or d.filename} for d in docs]
@@ -283,8 +279,7 @@ async def query_multiple_documents(
         user.ai_tokens_used = (user.ai_tokens_used or 0) + response.tokens_used
 
     await db.commit()
-    await increment_daily_queries(str(user_id), db)
-    await db.commit()
+
 
     return response
 
