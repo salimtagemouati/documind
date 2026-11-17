@@ -79,6 +79,7 @@ Apply migrations in order with a PostgreSQL client. `psql` expects a `postgresql
 psql "$PSQL_DATABASE_URL" -f scripts/001_init_schema.sql
 psql "$PSQL_DATABASE_URL" -f backend/migrations/002_add_billing.sql
 psql "$PSQL_DATABASE_URL" -f backend/migrations/003_pgvector.sql
+psql "$PSQL_DATABASE_URL" -f backend/migrations/004_refresh_sessions.sql
 ```
 
 The pgvector migration must match `EMBEDDING_DIM=768`. SQLite is a local compatibility mode and does not validate PostgreSQL extensions, RLS policies, HNSW indexes, or Supabase Storage.

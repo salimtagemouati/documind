@@ -5,10 +5,12 @@ POST /api/v1/auth/login     — get tokens
 POST /api/v1/auth/refresh   — rotate access token
 GET  /api/v1/auth/me        — get current user profile
 """
-from datetime import timedelta
+import hashlib
+from uuid import uuid4
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.limiter import limiter
@@ -22,7 +24,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.database import get_db
-from app.models.models import User
+from app.models.models import RefreshSession, User
 from app.schemas.schemas import (
     LoginRequest,
     RefreshRequest,
@@ -34,6 +36,20 @@ from app.services.demo_service import DEMO_EMAIL
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = get_logger(__name__)
+
+
+def digest(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+async def start_refresh_session(user_id, db, extra=None, expires_delta=None):
+    sid = str(uuid4())
+    token = create_refresh_token(str(user_id), extra={**(extra or {}), "sid": sid}, expires_delta=expires_delta)
+    expiry = datetime.fromtimestamp(decode_token(token)["exp"], tz=timezone.utc)
+    await db.execute(delete(RefreshSession).where(RefreshSession.expires_at < datetime.now(timezone.utc)))
+    db.add(RefreshSession(id=sid, token_digest=digest(token), expires_at=expiry))
+    await db.commit()
+    return token
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -57,7 +73,7 @@ async def register(request: Request, payload: RegisterRequest, db: AsyncSession 
     await db.flush()  # Get the generated ID before commit
 
     access_token = create_access_token(str(user.id), extra={"role": user.role.value})
-    refresh_token = create_refresh_token(str(user.id))
+    refresh_token = await start_refresh_session(user.id, db)
 
     logger.info("user_registered", user_id=str(user.id), email=user.email)
     return TokenResponse(
@@ -88,7 +104,7 @@ async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depe
         )
 
     access_token = create_access_token(str(user.id), extra={"role": user.role.value})
-    refresh_token = create_refresh_token(str(user.id))
+    refresh_token = await start_refresh_session(user.id, db)
 
     logger.info("user_logged_in", user_id=str(user.id))
     return TokenResponse(
@@ -113,8 +129,8 @@ async def login_demo(request: Request, db: AsyncSession = Depends(get_db)):
         extra={"role": user.role.value, "is_demo": True},
         expires_delta=timedelta(hours=2),
     )
-    refresh_token = create_refresh_token(
-        str(user.id),
+    refresh_token = await start_refresh_session(
+        user.id, db,
         extra={"role": user.role.value, "is_demo": True},
         expires_delta=timedelta(hours=2),
     )
@@ -146,14 +162,30 @@ async def refresh_token(payload: RefreshRequest, db: AsyncSession = Depends(get_
         str(user.id), extra=token_extra, expires_delta=token_lifetime
     )
     new_refresh = create_refresh_token(
-        str(user.id), extra=token_extra, expires_delta=token_lifetime
+        str(user.id), extra={**token_extra, "sid": token_data.get("sid"), "jti": str(uuid4())}, expires_delta=token_lifetime
     )
+    expiry = datetime.fromtimestamp(decode_token(new_refresh)["exp"], tz=timezone.utc)
+    rotated = await db.execute(update(RefreshSession).where(
+        RefreshSession.id == token_data.get("sid"), RefreshSession.token_digest == digest(payload.refresh_token),
+    ).values(token_digest=digest(new_refresh), expires_at=expiry))
+    if rotated.rowcount != 1:
+        raise HTTPException(status_code=401, detail="Refresh session has ended")
+    await db.commit()
 
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh,
         expires_in=60 * 60 * 2 if is_demo else 60 * 60,
     )
+
+
+@router.post("/logout", status_code=204)
+async def logout(payload: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    claims = decode_token(payload.refresh_token)
+    if claims.get("type") != "refresh":
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    await db.execute(delete(RefreshSession).where(RefreshSession.id == claims.get("sid")))
+    await db.commit()
 
 
 @router.get("/me", response_model=UserPublic)

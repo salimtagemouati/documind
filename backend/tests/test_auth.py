@@ -59,6 +59,10 @@ async def test_refresh_success(async_client: AsyncClient):
     assert refresh_resp.status_code == 200
     assert "access_token" in refresh_resp.json()
     assert "refresh_token" in refresh_resp.json()
+    assert (await async_client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})).status_code == 401
+    rotated = {"refresh_token": refresh_resp.json()["refresh_token"]}
+    assert (await async_client.post("/api/v1/auth/logout", json=rotated)).status_code == 204
+    assert (await async_client.post("/api/v1/auth/refresh", json=rotated)).status_code == 401
 
 
 @pytest.mark.asyncio

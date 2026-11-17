@@ -78,6 +78,8 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        const token = localStorage.getItem('refresh_token')
+        if (token) void authApi.logout(token).catch(() => console.warn('Could not revoke the remote session'))
         queryClient.clear()
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')

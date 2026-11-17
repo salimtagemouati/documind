@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 import stripe
-from sqlalchemy import func, select
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -208,43 +208,24 @@ async def check_document_limit(user_id: str, db: AsyncSession) -> None:
         )
 
 
-async def check_query_limit(user_id: str, db: AsyncSession) -> None:
-    """
-    Check if the user can make another AI query today.
-    Raises ValueError if the free tier daily limit is reached.
-    """
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise ValueError("User not found")
-
-    is_pro = user.subscription_tier == "pro" and user.subscription_status == "active"
-    if is_pro:
-        return  # No limits for pro users
-
-    queries_today = _get_daily_query_count(user)
-    if queries_today >= settings.STRIPE_FREE_QUERY_LIMIT:
-        raise ValueError(
-            f"Free tier daily limit reached: {settings.STRIPE_FREE_QUERY_LIMIT} queries/day. "
-            f"Upgrade to Pro for unlimited queries."
-        )
-
-
-async def increment_daily_queries(user_id: str, db: AsyncSession) -> None:
-    """Increment the user's daily query counter."""
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
-    user = result.scalar_one_or_none()
-    if not user:
-        return
-
-    today = datetime.now(timezone.utc)
-    if not user.daily_queries_date or user.daily_queries_date.date() != today.date():
-        user.daily_queries_count = 1
-        user.daily_queries_date = today
-    else:
-        user.daily_queries_count = (user.daily_queries_count or 0) + 1
-
-    await db.flush()
+async def reserve_query(user_id: str, db: AsyncSession, *, demo: bool = False) -> None:
+    """Count each admitted provider request, including requests that fail upstream."""
+    now = datetime.now(timezone.utc)
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    stale = or_(User.daily_queries_date.is_(None), User.daily_queries_date < midnight)
+    count = case((stale, 0), else_=func.coalesce(User.daily_queries_count, 0))
+    statement = update(User).where(User.id == UUID(user_id))
+    if not demo:
+        statement = statement.where(or_(
+            and_(User.subscription_tier == "pro", User.subscription_status == "active"),
+            count < settings.STRIPE_FREE_QUERY_LIMIT,
+        ))
+    result = await db.execute(statement.values(
+        daily_queries_count=count + 1, daily_queries_date=now,
+    ).execution_options(synchronize_session=False))
+    if result.rowcount != 1:
+        raise ValueError("Daily query limit reached.")
+    await db.commit()
 
 
 # ─── Webhook handlers ────────────────────────────────────────────────────────
