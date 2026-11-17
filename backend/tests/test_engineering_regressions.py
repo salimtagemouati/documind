@@ -24,10 +24,11 @@ def test_pdf_blank_pages_preserve_numbering():
     pages = [MagicMock(), MagicMock(), MagicMock()]
     for page, text in zip(pages, ['Contract begins.', '', 'Warranty lasts 24 months.']):
         page.extract_text.return_value = text
-    with patch('app.services.document_processor.PdfReader') as reader:
+    from app.services.pdf_worker import parse
+    with patch('app.services.pdf_worker.PdfReader') as reader:
         reader.return_value.pages = pages
         reader.return_value.is_encrypted = False
-        text, count = extract_text(b'fixture', 'pdf')
+        text, count = parse(b'fixture')
     assert count == 3
     assert [c['page_number'] for c in chunk_text(text)] == [1, 3]
 
@@ -304,3 +305,20 @@ def test_local_original_is_private_and_not_overwritten(tmp_path):
     with pytest.raises(FileExistsError):
         _write_local_original(path, b'Unexpected replacement')
     assert path.read_bytes() == b'Private document'
+
+
+def test_pdf_worker_timeout_then_next_request():
+    import subprocess
+    from pypdf import PdfWriter
+    from app.services.document_processor import extract_text_from_pdf
+
+    with patch("app.services.document_processor.subprocess.run",
+               side_effect=subprocess.TimeoutExpired("worker", 20)):
+        with pytest.raises(ValueError, match="resource limit"):
+            extract_text_from_pdf(b"fixture")
+
+    stream = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    writer.write(stream)
+    assert extract_text_from_pdf(stream.getvalue()) == ("", 1)
